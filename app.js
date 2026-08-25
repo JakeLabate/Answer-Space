@@ -21,7 +21,7 @@ const CHANNELS = [
     why:"No first-party API; SerpApi refuses browser calls outright. Runs on Actions." },
 ];
 const DEFAULT_MODELS = {
-  claude:"claude-sonnet-4-5", gemini:"gemini-2.5-flash",
+  claude:"claude-opus-5", gemini:"gemini-2.5-flash",
   chatgpt:"gpt-5", perplexity:"sonar-pro",
 };
 const model = id => (CFG.models && CFG.models[id]) || DEFAULT_MODELS[id];
@@ -229,7 +229,7 @@ const ASK = {
       headers:{ "content-type":"application/json", "x-api-key":CFG.keys.anthropic,
         "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
       body:JSON.stringify({ model:model("claude"), max_tokens:1600,
-        tools:[{type:"web_search_20250305",name:"web_search",max_uses:6}],
+        tools:[{type:"web_search_20260209",name:"web_search",max_uses:6}],
         messages:[{role:"user",content:query}] }),
     }),"claude");
     const blocks=j.content||[];

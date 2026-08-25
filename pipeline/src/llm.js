@@ -4,7 +4,7 @@ import { api, withRetry } from "./util.js";
    Kept separate from the answer channels so measurement never uses the model
    under measurement — you do not want ChatGPT grading ChatGPT's own answer. */
 
-const ANTHROPIC_MODEL = process.env.WORKER_MODEL_ANTHROPIC || "claude-sonnet-4-5";
+const ANTHROPIC_MODEL = process.env.WORKER_MODEL_ANTHROPIC || "claude-opus-5";
 const OPENAI_MODEL    = process.env.WORKER_MODEL_OPENAI    || "gpt-5";
 
 export async function structured({ system, user, schema, name = "result", maxTokens = 8000 }) {

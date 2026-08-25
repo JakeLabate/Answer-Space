@@ -13,9 +13,9 @@ export async function ask(query) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: process.env.CHANNEL_MODEL_ANTHROPIC || "claude-sonnet-4-5",
+      model: process.env.CHANNEL_MODEL_ANTHROPIC || "claude-opus-5",
       max_tokens: 2000,
-      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }],
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
       messages: [{ role: "user", content: query }],
     }),
   }), { label: "claude" });

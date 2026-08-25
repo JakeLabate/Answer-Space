@@ -19,6 +19,25 @@ still runs in your browser either way. See [SETUP.md](SETUP.md).
 
 ---
 
+## Where to read next
+
+This file is the overview. Each of these takes one aspect of the tool apart properly.
+
+| | |
+|---|---|
+| **[Creating a run](docs/user-flow.md)** | The seven steps end to end — what each one writes, what gates the Next button, and why the Facts step is the one worth slowing down on. |
+| **[The six views](docs/visualisations.md)** | What each visualisation is *for*, what its encodings mean, and how the angles, filters and drill-in work. Start with Coverage; the doc explains why. |
+| **[Angles](docs/angles.md)** | The preset buttons in the explorer's left rail: what data each one pulls, why that filter is paired with that view, and why the list is shorter on a fresh run. Deterministic, not AI-picked. |
+| **[The data model](docs/data-model.md)** | How a sentence an assistant said becomes a filterable row. The two-table design, the full schema-2 bundle, and why verdict, risk and support are separate fields from sentiment. |
+| **[Architecture](docs/architecture.md)** | Two interchangeable engines, three storage layers, the optional cloud, and the security model behind it. |
+| **[The vocabularies](docs/taxonomies.md)** | Every fixed enum — source types, influence, tones, verdicts, risks, the 16 nuance tags — what each value means, and how to add one without breaking your own history. |
+
+| Also | |
+|---|---|
+| **[SETUP.md](SETUP.md)** | Provisioning accounts, and the one secret you must set yourself. |
+
+---
+
 ## Deploy (no terminal)
 
 1. GitHub → **New repository** → **Create**.
@@ -50,7 +69,8 @@ much of the answer was about you, and did the assistant refuse.
 
 The Coverage view draws this directly. Every cell is a wireframe cage sized to all the
 answers in that platform × topic; the solid block inside is how often you were in them. An
-empty cage is a topic you are invisible on.
+empty cage is a topic you are invisible on. All six views are documented in
+[docs/visualisations.md](docs/visualisations.md).
 
 ### Volatility — is that number stable?
 
@@ -94,6 +114,9 @@ doesn't cover, so a short accurate list beats a long speculative one.
 | `support` | Verified, unsupported, unreachable, unchecked. |
 | `factConflict` | Which of your ground-truth lines the answer contradicts. |
 | `nuance` | 16 fixed tags — buried citation, own-domain echo, stale data, competitor favoured, conditional endorsement, and so on. |
+
+Every value each of these can take is listed, with what it means, in
+[docs/taxonomies.md](docs/taxonomies.md).
 
 ---
 
@@ -172,7 +195,9 @@ Setup is one pasted secret: **[SETUP.md](SETUP.md)**.
 | Raw answers, extractions, verifications | IndexedDB | IndexedDB **and** `snapshots.raw` |
 | `records.json` | the repo, if you run via Actions; otherwise download from step 7 | unchanged |
 
-Local is written first and the cloud second, so a failed sync never costs you a run.
+Local is written first and the cloud second, so a failed sync never costs you a run. The
+layers, and what is deliberately *not* stored in the cloud, are in
+[docs/architecture.md](docs/architecture.md).
 
 Signed out, storage is per-browser — a run on your laptop isn't on your phone. Signing in
 is one fix for that; the Actions path is the other. A public repo means a public
@@ -212,6 +237,9 @@ client — [verified against the live project](SETUP.md), not assumed.
 }
 ```
 
+The full schema, and how an answer becomes these rows, is in
+[docs/data-model.md](docs/data-model.md).
+
 Vocabularies live in `pipeline/src/taxonomy.js` and at the top of `app.js`.
 **Change them in both places or not at all**, or the browser and Actions engines will
 disagree about what a citation is.
@@ -244,6 +272,7 @@ those runs — not that it never would.
 
 ```
 index.html                     the dashboard
+docs/                          the long-form docs linked at the top of this file
 app.js / app.css               wizard, browser engine, storage, Actions dispatch
 config.js                      which Supabase project accounts use (blank = accounts off)
 cloud.js                       auth, sync, run history — no-ops entirely when signed out

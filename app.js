@@ -465,14 +465,35 @@ async function verifyClaim(host, url, claim){
    UI
    ══════════════════════════════════════════════════════════════════════ */
 const STEPS = [
-  {id:"keys",    t:"Connect",  d:"api keys"},
-  {id:"target",  t:"Target",   d:"the website"},
-  {id:"refine",  t:"Refine",   d:"brand & topics"},
-  {id:"facts",   t:"Ground truth", d:"what is really true"},
-  {id:"queries", t:"Queries",  d:"the question set"},
-  {id:"collect", t:"Collect",  d:"run a snapshot"},
-  {id:"explore", t:"Explore",  d:"the 3d view"},
+  {id:"keys",    t:"Connect",  d:"add an AI key"},
+  {id:"target",  t:"Website",  d:"who we're checking"},
+  {id:"refine",  t:"Check",    d:"brand & rivals"},
+  {id:"facts",   t:"Facts",    d:"what's true (optional)"},
+  {id:"queries", t:"Questions",d:"what we'll ask"},
+  {id:"collect", t:"Run",      d:"collect answers"},
+  {id:"explore", t:"Results",  d:"see how you did"},
 ];
+
+/* What the Next button does on each step, and why it might be blocked.
+   `run` is an action Next must complete before moving on; `why` is shown
+   in place of a dead button, because a disabled control with no explanation
+   is the single most common way a wizard loses someone. */
+/* `can` gates on what THIS step needs in order to move on — deliberately not
+   on whether the next step is already reachable. The Facts step writes the
+   query set as it leaves, so gating it on "are there queries yet" would have
+   it disable itself on the very thing it exists to produce. */
+const FLOW = {
+  keys:    { next:"target",  can:()=>!!workerKind(),
+             why:"Add a key above, or switch on demo mode, to continue." },
+  target:  { next:"refine",  can:()=>!!CFG.profile,
+             why:"Enter your website and press Analyse site first." },
+  refine:  { next:"facts",   can:()=>!!CFG.profile, why:"" },
+  facts:   { next:"queries", can:()=>!!CFG.profile, why:"",
+             run:()=>genPrompts(false), busy:"Writing your questions…" },
+  queries: { next:"collect", can:()=>!!(CFG.prompts?.prompts?.length), why:"" },
+  collect: { next:"explore", can:()=>!!STATE.bundle,
+             why:"Press Run to collect some answers first." },
+};
 function ready(id){
   switch(id){
     case "keys": return true;
@@ -508,6 +529,56 @@ function go(id){
   $("#dsub").textContent = (CFG.profile? CFG.profile.brand+" · " : "") + (STEPS.find(s=>s.id===id)?.t||"");
   window.scrollTo({top:0,behavior:"instant"});
 }
+/* One Back/Next bar per pane, appended once at boot. Every step gets the same
+   pair in the same place, so moving through the wizard never depends on
+   finding a differently-named button on each screen. */
+function buildNav(){
+  STEPS.forEach((st,i)=>{
+    const pane=$("#p-"+st.id); if(!pane || pane.querySelector(".wnav")) return;
+    const prev=i>0?STEPS[i-1]:null, f=FLOW[st.id];
+    const nav=el("div","wnav");
+    nav.innerHTML=
+      (prev?`<button class="btn ghost" data-back="${prev.id}">← Back</button>`:'<span></span>')
+      + '<span class="wnav-note"></span>'
+      + (f?`<button class="btn primary" data-next="${st.id}">Next →</button>`
+          :'<span></span>');
+    pane.appendChild(nav);
+    const back=nav.querySelector("[data-back]");
+    if(back) back.onclick=()=>go(back.dataset.back);
+    const next=nav.querySelector("[data-next]");
+    if(next) next.onclick=()=>advance(st.id,next);
+  });
+}
+
+/* Next: run whatever this step owes (writing the query set, say), then move. */
+async function advance(from, btn){
+  const f=FLOW[from]; if(!f) return;
+  if(f.run){
+    const old=btn.textContent;
+    btn.disabled=true; btn.textContent=f.busy||"Working…";
+    try{ await f.run(); }
+    catch(e){ alert("Could not finish that step:\n\n"+String(e.message||e).slice(0,300));
+      btn.disabled=false; btn.textContent=old; return; }
+    btn.disabled=false; btn.textContent=old;
+  }
+  go(f.next);
+}
+
+/* Grey the Next button when the next step genuinely is not reachable yet, and
+   always say why next to it. */
+function renderNav(){
+  STEPS.forEach(st=>{
+    const pane=$("#p-"+st.id); if(!pane) return;
+    const nav=pane.querySelector(".wnav"); if(!nav) return;
+    const f=FLOW[st.id]; if(!f) return;
+    const btn=nav.querySelector("[data-next]");
+    const note=nav.querySelector(".wnav-note");
+    const ok=f.can();
+    if(btn) btn.disabled=!ok;
+    if(note) note.textContent = ok ? "" : (f.why || "");
+  });
+}
+
 function renderSteps(){
   const host=$("#steps"); host.innerHTML="";
   STEPS.forEach((s,i)=>{
@@ -526,6 +597,7 @@ function renderSteps(){
   const dp=$("#dataPill");
   dp.textContent = STATE.bundle ? `${STATE.bundle.records.length.toLocaleString()} citations` : "no data";
   dp.className = "pill" + (STATE.bundle ? " live" : "");
+  renderNav();
 }
 
 /* ── step 1 · channels ─────────────────────────────────────────────── */
@@ -1431,6 +1503,7 @@ async function boot(){
   renderAccount();
   if(signedIn()) await hydrate();
 
+  buildNav();
   renderChannels();
   $("#site").value=CFG.site||""; $("#hint").value=CFG.hint||"";
   $("#scanQ").value=CFG.scan.q||20; $("#scanR").value=CFG.scan.r||3;
@@ -1450,16 +1523,7 @@ async function boot(){
     CFG.profile.aliases=$("#aliases").value.split(",").map(s=>s.trim()).filter(Boolean);
     saveCfg();
   });
-  $("#btnToFacts").onclick=()=>go("facts");
   $("#facts").oninput=()=>{ CFG.facts=$("#facts").value; saveCfg(); renderFacts(); renderSteps(); };
-  $("#btnSkipFacts").onclick=async()=>{ CFG.facts=""; saveCfg(); await toQueries(); };
-  async function toQueries(){
-    const b=$("#btnToQueries"); b.disabled=true;
-    try{ await genPrompts(false); go("queries"); }
-    catch(e){ alert("Could not write the query set:\n\n"+e.message.slice(0,300)); }
-    finally{ b.disabled=false; }
-  }
-  $("#btnToQueries").onclick=toQueries;
   $("#verifyToggle").onclick=()=>{ CFG.scan.verify=!CFG.scan.verify; saveCfg(); renderCollect(); };
   $("#verifyMax").oninput=()=>{ CFG.scan.verifyMax=clamp(+$("#verifyMax").value||40,1,400); saveCfg(); renderCollect(); };
   $("#btnRegen").onclick=async()=>{

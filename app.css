@@ -217,3 +217,21 @@ body.viz-open #dash{display:none}
 .histrow .bad{color:var(--neg)}
 .histrow button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:11px;padding:2px 6px}
 .histrow button:hover{color:#ffb3b3}
+
+/* ══ wizard navigation ═════════════════════════════════════════════════
+   The same Back/Next pair on every step, in the same place. A disabled Next
+   always carries the reason beside it — a dead button with no explanation is
+   how a setup flow loses people. */
+.wnav{display:flex;align-items:center;gap:14px;margin-top:26px;padding-top:18px;
+  border-top:1px solid var(--line);flex-wrap:wrap}
+.wnav .wnav-note{flex:1;min-width:120px;font-size:11.5px;color:var(--ink-3);text-align:right}
+.wnav [data-next]{min-width:104px;justify-content:center}
+.wnav [data-back]{color:var(--ink-3)}
+.wnav [data-back]:hover{color:var(--ink)}
+@media (max-width:560px){
+  .wnav{gap:8px}
+  .wnav .wnav-note{order:3;flex-basis:100%;text-align:left}
+}
+
+/* the plain-language explainer on step 1 */
+#whatIsThis{line-height:1.55}

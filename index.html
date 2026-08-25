@@ -36,34 +36,39 @@
 
       <!-- 1 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-keys">
-        <h2>Connect the assistants</h2>
-        <p class="lede" id="keysLede">Keys are stored in this browser only and go straight to each vendor's API. Nothing is sent to any server of mine, because there is no server of mine — this page is static.</p>
+        <h2>Connect an AI assistant</h2>
+        <p class="lede" id="keysLede">To check what AI assistants say about you, this page needs to be able to ask them. That takes an API key — a password from the AI company that lets this page send questions on your behalf. You pay them directly for what you use.</p>
+
+        <div class="note info" id="whatIsThis"><b>New to this? Here is the whole idea.</b>
+          More and more people ask ChatGPT or Claude "what's the best tool for X" instead of searching.
+          You cannot see those answers, so you cannot tell whether you get mentioned, whether a rival
+          gets recommended instead, or whether what is said about you is even true.
+          This tool asks those questions for you, on a schedule, and keeps score.</div>
 
         <div id="chanlist"></div>
 
-        <div class="note" id="corsNote"><b>Why three of them are greyed out.</b> Browsers cannot call the OpenAI, Perplexity or SerpApi endpoints directly — they refuse cross-origin requests, and SerpApi says so explicitly. Those three run through GitHub Actions instead, which you set up in step 5. Claude and Gemini work right here with no infrastructure at all.</div>
+        <div class="note" id="corsNote"><b>Why some are marked "actions only".</b> Claude and Gemini can be used straight from this page — add a key and they work. ChatGPT, Perplexity and Google AI Overviews block requests coming from a web page, so they can only run on a server. There is a way to do that further on, but you do not need it to start. <b>One key for Claude is enough.</b></div>
 
         <h3>Or try it without keys</h3>
         <div class="card">
           <div class="row">
             <div style="flex:1;min-width:220px">
-              <h4>Demo mode</h4>
-              <p>Fabricates a realistic profile, query set and answers locally. Nothing is called, nothing is charged. Use it to see the whole flow before you commit a budget.</p>
+              <h4>Just want a look around first?</h4>
+              <p>Demo mode makes up a company, a set of questions and a batch of fake answers so you can walk the whole thing end to end. Nothing is sent anywhere and nothing costs you anything. Turn it off when you want real numbers.</p>
             </div>
             <button class="btn" id="btnDemo" aria-pressed="false">Enable demo mode</button>
           </div>
         </div>
 
         <div class="btnbar">
-          <button class="btn primary" data-go="target">Continue →</button>
           <span class="hint" id="keysHint"></span>
         </div>
       </section>
 
       <!-- 2 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-target">
-        <h2>What are we measuring?</h2>
-        <p class="lede">Give me a domain. I'll read the site and work out the brand, the product, who it competes with, and the topics buyers actually argue about. You get to correct all of it on the next screen.</p>
+        <h2>Which website are we checking?</h2>
+        <p class="lede">Enter your domain. The assistant reads your site and works out what you sell, who you compete with, and which topics your buyers care about. You get to correct all of it on the next screen, so a rough first pass is fine.</p>
 
         <div class="card">
           <div class="row top">
@@ -72,11 +77,11 @@
               <input type="text" id="site" placeholder="paypal.com" autocomplete="off" spellcheck="false">
             </div>
             <div style="flex:3;min-width:260px">
-              <label class="f" for="hint">Which product, specifically? (optional)</label>
+              <label class="f" for="hint">Which product, exactly? (optional)</label>
               <input type="text" id="hint" placeholder="the digital wallet, consumer and merchant side" autocomplete="off">
             </div>
           </div>
-          <div class="hint">The hint matters when a company sells many things. Without it you may end up measuring the wrong product line.</div>
+          <div class="hint">Only needed if you sell several different things. A bank that offers cards, loans and savings should say which one — otherwise you may end up measuring the wrong part of the business.</div>
         </div>
 
         <div class="btnbar">
@@ -87,8 +92,8 @@
 
       <!-- 3 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-refine">
-        <h2>Fix what it got wrong</h2>
-        <p class="lede">This is the highest-leverage screen in the app. Everything downstream inherits these decisions, and a bad competitor list quietly corrupts twelve weeks of data.</p>
+        <h2>Check what it found</h2>
+        <p class="lede">Worth a minute of your time. Everything from here on is built on what is on this screen — especially the competitor list. If a real rival is missing, you will never find out when an assistant recommends them instead of you.</p>
 
         <div class="card">
           <div class="row top">
@@ -97,18 +102,18 @@
               <input type="text" id="brandName">
             </div>
             <div style="flex:1;min-width:200px">
-              <label class="f" for="prodName">Product being measured</label>
+              <label class="f" for="prodName">Product being checked</label>
               <input type="text" id="prodName">
             </div>
           </div>
           <div style="margin-top:11px">
-            <label class="f" for="aliases">Also called (comma separated)</label>
+            <label class="f" for="aliases">Other names people use for it (comma separated)</label>
             <input type="text" id="aliases" placeholder="PayPal Wallet, PayPal Balance">
           </div>
         </div>
 
         <h3>Competitors</h3>
-        <div class="note info">Mark anything you <b>own</b> as a sibling. A brand you own is not a rival — but it is still worth tracking, because assistants routinely confuse a parent brand with its subsidiary, and that confusion is findable in the data.</div>
+        <div class="note info">Add anyone a buyer might pick instead of you. If one of these is a brand <b>you own</b>, tick "sibling" — it is not a rival, but it is still worth watching, because assistants often mix up a parent company with the brands it owns.</div>
         <div class="list" id="complist"></div>
         <div class="row" style="margin-top:9px">
           <input type="text" id="newComp" placeholder="Add a competitor" style="max-width:280px">
@@ -116,7 +121,7 @@
         </div>
 
         <h3>Topics</h3>
-        <p class="hint" style="margin:-4px 0 10px">Keep names short — two or three words. They become axis labels in the 3D views and long ones clip.</p>
+        <p class="hint" style="margin:-4px 0 10px">The subjects your buyers care about — "pricing", "ease of use", "customer support". Questions get grouped under these so you can see which subjects you show up for and which you are invisible on. Keep each to two or three words, or the labels get cut off in the charts.</p>
         <div class="list" id="themelist"></div>
         <div class="row" style="margin-top:9px">
           <input type="text" id="newTheme" placeholder="Add a topic" style="max-width:280px">
@@ -124,40 +129,39 @@
         </div>
 
         <div class="btnbar">
-          <button class="btn primary" id="btnToFacts">Continue →</button>
           <span class="hint" id="refineStatus"></span>
         </div>
       </section>
 
       <!-- 4 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-facts">
-        <h2>Ground truth</h2>
-        <p class="lede">Optional, and the highest-return five minutes in the whole setup. Paste what is actually true about you — prices, limits, features, guarantees. Every answer then gets checked against it, and contradictions come back as flagged findings instead of as sentiment.</p>
+        <h2>What is actually true about you?</h2>
+        <p class="lede">Optional, but it is the most useful five minutes here. Assistants often repeat things about companies that are out of date or simply wrong. List the real facts — prices, limits, what is included — and every answer gets checked against your list.</p>
 
-        <div class="note info"><b>This is what turns opinion into evidence.</b> "An assistant is negative about us" starts an argument. "An assistant told 40 people our fee is 2.9% when we cut it to 2.59% in March, citing a 2023 page" ends one.</div>
+        <div class="note info"><b>Why bother.</b> "An assistant says bad things about us" is an opinion, and someone will argue with it. "An assistant told people our fee is 2.9% when we cut it to 2.59% in March, and it was reading a page from 2023" is a fact, and someone can go fix it.</div>
 
         <div class="card">
-          <label class="f" for="facts">Verified facts — one per line</label>
+          <label class="f" for="facts">One fact per line</label>
           <textarea id="facts" rows="12" spellcheck="false" placeholder="Standard processing fee is 2.59% + $0.49 per domestic transaction, effective March 2026.
 Instant transfer costs 1.5%, capped at $15.
 Free plan includes 3 seats. It has included 3 seats since launch; it was never 5.
 We support 14 currencies, not 40.
 There is no minimum contract term on the Starter plan.
 Buyer protection covers eligible physical goods only, never digital services."></textarea>
-          <div class="hint">Write them as flat assertions with dates where it matters. The extractor only flags direct contradictions — it stays quiet about anything this list is silent on, so a short accurate list beats a long speculative one.</div>
+          <div class="hint">Write plain statements, and add a date where it matters. Only direct contradictions get flagged — anything your list does not mention is left alone. A short, accurate list is better than a long, vague one. You can always add more later.</div>
         </div>
 
         <div class="btnbar">
-          <button class="btn primary" id="btnToQueries">Write the query set →</button>
-          <button class="btn ghost" id="btnSkipFacts">Skip for now</button>
-          <span class="hint" id="factsStatus"></span>
+          <span class="hint" id="factsStatus">Leave it empty to skip — you can come back and add facts any time.</span>
         </div>
       </section>
 
       <!-- 5 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-queries">
-        <h2>The query set</h2>
-        <p class="lede">These get sent verbatim, every run, forever. Once you start collecting, changing them breaks week-over-week comparison — so read them now. Roughly 60% deliberately do not name you: that is where you find out whether you get surfaced at all.</p>
+        <h2>The questions we will ask</h2>
+        <p class="lede">These are sent to the assistants word for word, the same way every time. About 6 in 10 deliberately do not mention your brand — those are the ones that tell you whether you come up at all when someone asks about the category rather than about you.</p>
+
+        <div class="note info"><b>Read them now, change them rarely.</b> Comparing one month to the next only works if the questions stayed the same. Edit anything that sounds wrong before your first run; after that, leave them be.</div>
 
         <div class="metrics" id="qmetrics"></div>
         <div class="scroller"><table class="qtable" id="qtable"></table></div>
@@ -168,43 +172,43 @@ Buyer protection covers eligible physical goods only, never digital services."><
         </div>
 
         <div class="btnbar">
-          <button class="btn primary" data-go="collect">Freeze and continue →</button>
+          <span class="hint" id="queriesFoot"></span>
         </div>
       </section>
 
       <!-- 5 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-collect">
-        <h2>Collect</h2>
-        <p class="lede">Each run is one snapshot. Run it weekly and the timeline builds itself. Answers are stored in this browser as they arrive, so a closed tab costs you the run in progress, not the history.</p>
+        <h2>Run the check</h2>
+        <p class="lede">This asks every question and records what comes back. One run is a snapshot of where you stand today; run it again next week or next month and you start to see which way you are moving. Results are saved as they arrive, so closing the tab only loses the run in progress, never what you already collected.</p>
 
         <div class="card">
           <div class="row top">
             <div style="flex:1;min-width:150px">
-              <label class="f" for="scanQ">Queries this run</label>
+              <label class="f" for="scanQ">How many questions</label>
               <input type="number" id="scanQ" min="1" max="200" value="20">
             </div>
             <div style="flex:1;min-width:150px">
-              <label class="f" for="scanR">Repeats per query</label>
+              <label class="f" for="scanR">How many times each</label>
               <input type="number" id="scanR" min="1" max="5" value="1">
             </div>
             <div style="flex:1;min-width:150px">
-              <label class="f" for="scanDate">Snapshot date</label>
+              <label class="f" for="scanDate">Date to file this under</label>
               <input type="text" id="scanDate" placeholder="YYYY-MM-DD">
             </div>
           </div>
           <div class="row top" style="margin-top:11px">
             <label class="toggle" id="verifyToggle" aria-pressed="true" style="cursor:pointer">
-              <span>◆</span> Verify claims against the pages they cite
+              <span>◆</span> Check whether cited pages really say what the assistant claimed
             </label>
             <div style="width:150px">
-              <label class="f" for="verifyMax">Claims to check</label>
+              <label class="f" for="verifyMax">How many to check</label>
               <input type="number" id="verifyMax" min="5" max="400" value="40">
             </div>
           </div>
           <div class="hint" id="scanEstimate"></div>
         </div>
 
-        <div class="note"><b>Repeats are the measurement, not a luxury.</b> Ask the same question three times and you get three different answers — sometimes you are in two of them and absent from the third. One repeat cannot tell you that; it just reports whichever roll it got. Three is the floor for the volatility numbers to mean anything.</div>
+        <div class="note"><b>Why ask the same question more than once.</b> Assistants do not give the same answer every time. Ask three times and you might be mentioned twice and missed once — that is a very different position from being mentioned every time, and asking once cannot tell them apart. Three is the smallest number that shows you the difference. <b>Start small:</b> 5 questions, 1 time each, checking off — enough to see it work for a few cents.</div>
 
         <div class="metrics" id="runmetrics"></div>
         <div class="meter"><i id="bar" style="width:0%"></i></div>
@@ -216,8 +220,8 @@ Buyer protection covers eligible physical goods only, never digital services."><
           <button class="btn ghost" id="btnBuild">Rebuild dataset</button>
         </div>
 
-        <h3>All five channels, via GitHub Actions</h3>
-        <p class="hint" style="margin:-4px 0 12px">The repo you deployed this from can run the full pipeline for you — including ChatGPT, Perplexity and AI Overviews, which browsers cannot reach. Put the keys in <b>Settings → Secrets → Actions</b>, then trigger a run from here.</p>
+        <h3>Advanced: add ChatGPT, Perplexity and Google AI Overviews</h3>
+        <p class="hint" style="margin:-4px 0 12px">Skip this until you have the basics working. Those three cannot run from a web page, so they run on GitHub instead. Put your keys in your repository under <b>Settings → Secrets and variables → Actions</b>, then start a run from here.</p>
         <div class="card tight">
           <div class="row top">
             <div style="flex:1;min-width:190px">
@@ -239,8 +243,8 @@ Buyer protection covers eligible physical goods only, never digital services."><
 
       <!-- 6 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-explore">
-        <h2>Explore</h2>
-        <p class="lede">Six ways into the same run. Coverage answers whether you showed up at all; the other five describe what happened when you did.</p>
+        <h2>See the results</h2>
+        <p class="lede">Six views of the same run. Start with <b>Coverage</b> — it answers the first question, whether you showed up at all. The other five describe what happened when you did: who got recommended, what was claimed, and where it came from.</p>
         <div class="metrics" id="dsmetrics"></div>
         <div class="btnbar" style="border:none;padding-top:0;margin-top:6px">
           <button class="btn primary" id="btnOpenViz">Open the explorer</button>

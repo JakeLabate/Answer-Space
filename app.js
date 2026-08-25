@@ -98,10 +98,16 @@ let CFG = { keys:{}, models:{}, demo:false, site:"", hint:"", profile:null, prom
             scan:{q:20,r:3,verify:true,verifyMax:40}, gh:{repo:"",pat:""}, step:"keys" };
 function saveCfg(){
   try{
-    /* Signed in, the vendor keys live encrypted in the account instead, so they
-       are deliberately not written to this browser at all. Signed out, nothing
-       changes: this is the same localStorage record it has always been. */
-    localStorage.setItem(LS, JSON.stringify(signedIn() ? {...CFG, keys:{}} : CFG));
+    let out=CFG;
+    if(signedIn()){
+      /* Keep a key out of this browser only once the account is known to hold
+         it. Anything not yet confirmed stays local, so a failed or pending
+         sync can never destroy the key the user just typed. */
+      const keep={};
+      for(const [k,v] of Object.entries(CFG.keys||{})) if(!KEYS_SAVED.has(k)) keep[k]=v;
+      out={...CFG, keys:keep};
+    }
+    localStorage.setItem(LS, JSON.stringify(out));
   }catch{}
   if(signedIn()) CLOUD.pushWorkspace(CFG);
 }
@@ -140,6 +146,12 @@ const signedIn = () => !!(window.CLOUD && window.CLOUD.signedIn());
 
 /* Snapshot dates whose raw data has changed locally and not yet been pushed. */
 const DIRTY = new Set();
+
+/* Providers whose key is CONFIRMED stored on the account. saveCfg() only omits
+   a key from localStorage once its provider is in here. Stripping a key that
+   never reached the account deletes it outright on the next reload — which is
+   exactly what happened before this existed. */
+const KEYS_SAVED = new Set();
 
 /* ══════════════════════════════════════════════════════════════════════
    Worker model — profiling, query writing, citation extraction.
@@ -484,15 +496,20 @@ const STEPS = [
    it disable itself on the very thing it exists to produce. */
 const FLOW = {
   keys:    { next:"target",  can:()=>!!workerKind(),
-             why:"Add a key above, or switch on demo mode, to continue." },
+             why:()=>"Add a key above, or switch on demo mode, to continue." },
   target:  { next:"refine",  can:()=>!!CFG.profile,
-             why:"Enter your website and press Analyse site first." },
-  refine:  { next:"facts",   can:()=>!!CFG.profile, why:"" },
-  facts:   { next:"queries", can:()=>!!CFG.profile, why:"",
+             why:()=>"Enter your website and press Analyse site first." },
+  refine:  { next:"facts",   can:()=>!!CFG.profile,
+             why:()=>"Go back to Website and press Analyse site first." },
+  facts:   { next:"queries", can:()=>!!CFG.profile && !!workerKind(),
+             why:()=>!CFG.profile
+               ? "Go back to Website and press Analyse site first."
+               : "Writing the questions needs an AI key — add one on step 1 (Connect).",
              run:()=>genPrompts(false), busy:"Writing your questions…" },
-  queries: { next:"collect", can:()=>!!(CFG.prompts?.prompts?.length), why:"" },
+  queries: { next:"collect", can:()=>!!(CFG.prompts?.prompts?.length),
+             why:()=>"No questions yet — go back a step and let it write them." },
   collect: { next:"explore", can:()=>!!STATE.bundle,
-             why:"Press Run to collect some answers first." },
+             why:()=>"Press Run to collect some answers first." },
 };
 function ready(id){
   switch(id){
@@ -575,7 +592,7 @@ function renderNav(){
     const note=nav.querySelector(".wnav-note");
     const ok=f.can();
     if(btn) btn.disabled=!ok;
-    if(note) note.textContent = ok ? "" : (f.why || "");
+    if(note) note.textContent = ok ? "" : (f.why?.() || "");
   });
 }
 
@@ -615,9 +632,12 @@ function renderChannels(){
     const inp=el("input"); inp.type="password"; inp.placeholder=meta.ph;
     inp.value=CFG.keys[c.key]||""; inp.autocomplete="off"; inp.spellcheck=false;
     inp.oninput=()=>{ const v=inp.value.trim(); if(v) CFG.keys[c.key]=v; else delete CFG.keys[c.key];
-      saveCfg(); renderSteps(); renderKeysHint(); };
-    /* On blur, not on input — one encrypted write per key, not one per keystroke. */
-    inp.onchange=()=>{ if(!signedIn()) return; syncKey(c.key, inp.value.trim()); };
+      KEYS_SAVED.delete(c.key);          /* changed — no longer matches the account */
+      saveCfg(); renderSteps(); renderKeysHint();
+      /* Debounced rather than blur-only: a key pasted and then clicked past
+         without the field ever blurring used to reach the account never. */
+      clearTimeout(inp._t); inp._t=setTimeout(()=>syncKey(c.key, inp.value.trim()), 900); };
+    inp.onchange=()=>{ clearTimeout(inp._t); syncKey(c.key, inp.value.trim()); };
     wrap.appendChild(inp);
     if(c.cors){
       const m=el("input"); m.type="text"; m.placeholder=DEFAULT_MODELS[c.id];
@@ -1250,13 +1270,17 @@ async function syncKey(provider, value){
   if(!signedIn()) return;
   try{
     setSync("syncing");
-    if(value) await CLOUD.putKey(provider, value);
-    else      await CLOUD.delKey(provider);
+    if(value){ await CLOUD.putKey(provider, value); KEYS_SAVED.add(provider); }
+    else     { await CLOUD.delKey(provider);        KEYS_SAVED.delete(provider); }
     setSync(DIRTY.size?"pending":"synced");
   }catch(e){
+    /* Not saved — so it must stay in this browser, or it is gone. */
+    KEYS_SAVED.delete(provider);
     setSync("pending");
-    log("sync: that key was not saved to your account — "+String(e.message||e).slice(0,100),"e");
+    log("that key is not saved to your account yet — "+String(e.message||e).slice(0,90),"e");
   }
+  saveCfg();          /* rewrite localStorage now that we know what is safe */
+  renderKeysHint();
 }
 
 /* Sign-in: bring down what the account has and this browser does not. */
@@ -1283,9 +1307,14 @@ async function hydrate(){
       CLOUD.setHydrating(true);
     }
 
-    /* Vendor keys, decrypted for their owner only. */
-    try{ Object.assign(CFG.keys, await CLOUD.getKeys()); }
-    catch(e){ log("sync: could not read stored keys — "+e.message.slice(0,80),"e"); }
+    /* Vendor keys, decrypted for their owner only. Whatever comes back is
+       confirmed present on the account, so it is safe to keep out of
+       localStorage from here on. */
+    try{
+      const remoteKeys=await CLOUD.getKeys();
+      Object.assign(CFG.keys, remoteKeys);
+      for(const k of Object.keys(remoteKeys)) KEYS_SAVED.add(k);
+    }catch(e){ log("could not read the keys on your account — "+e.message.slice(0,80),"e"); }
 
     /* Snapshots the account has and this browser does not. */
     const remote=await CLOUD.snapshotDates();
@@ -1556,6 +1585,7 @@ async function boot(){
   };
   $("#acctSignOut").onclick=async()=>{
     await CLOUD.signOut();
+    KEYS_SAVED.clear();
     $("#accountModal").hidden=true;
     /* The local copy stays. Signing out is not a delete — it just stops syncing. */
     saveCfg();
@@ -1583,9 +1613,14 @@ async function boot(){
   $("#btnExport").onclick=async()=>download("answer-space-config.json",
     {cfg:{...CFG,keys:{}},bundle:STATE.bundle,dates:await snapshotDates()});
   $("#btnWipe").onclick=async()=>{
-    if(!confirm(signedIn()
-      ? "Delete the profile, query set, every snapshot and all keys from THIS BROWSER?\n\nYour account keeps its copy — sign in again and it comes back. Use Account → Delete cloud data to remove that too."
+    const inAccount=signedIn();
+    if(!confirm(inAccount
+      ? "Clear this browser and sign out?\n\nYour account keeps its copy of everything — sign back in and it all returns. To delete the account copy as well, use Account → Delete cloud data before doing this."
       : "Delete the profile, query set, every snapshot and all keys from this browser?"))return;
+    /* Sign out FIRST. Clearing local storage while still signed in accomplishes
+       nothing visible: the reload re-runs hydrate() and pulls it all straight
+       back down, which reads as "Reset is broken". */
+    if(inAccount){ try{ await CLOUD.signOut(); }catch{} }
     localStorage.removeItem(LS);
     for(const k of await kvKeys()) await kvDel(k);
     location.reload();

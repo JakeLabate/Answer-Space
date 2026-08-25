@@ -1,0 +1,109 @@
+name: collect
+
+# The backend. GitHub Pages serves the dashboard; this runs the channels a
+# browser cannot reach (ChatGPT, Perplexity, Google AI Overviews) and commits
+# records.json back to the repo, where Pages picks it up on the next load.
+#
+# Secrets to set under Settings → Secrets and variables → Actions:
+#   ANTHROPIC_API_KEY   worker model + Claude channel
+#   OPENAI_API_KEY      ChatGPT channel
+#   PERPLEXITY_API_KEY  Perplexity channel
+#   GEMINI_API_KEY      Gemini channel
+#   SERPAPI_KEY         Google AI Overviews
+# Any you leave unset are simply skipped.
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: Domain being measured (informational; profile.json is authoritative)
+        required: false
+        default: ""
+      queries:
+        description: How many queries from the frozen set (0 = all)
+        required: false
+        default: "20"
+      repeats:
+        description: Repeats per query (3 or more for the volatility numbers to mean anything)
+        required: false
+        default: "3"
+      verify:
+        description: Re-open cited pages and check the claims
+        required: false
+        default: "true"
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+
+permissions:
+  contents: write
+
+concurrency:
+  group: answer-space-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check the configuration exists
+        run: |
+          if [ ! -f pipeline/data/profile.json ] || [ ! -f pipeline/data/prompts.json ]; then
+            echo "::error::No profile.json / prompts.json in pipeline/data."
+            echo "Open the dashboard, finish the Refine and Queries steps, then press Trigger workflow — it pushes them here first."
+            exit 1
+          fi
+
+      - name: Collect
+        env:
+          WORKER_PROVIDER: anthropic
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          SERPAPI_KEY:        ${{ secrets.SERPAPI_KEY }}
+        run: |
+          node pipeline/src/run.js collect \
+            --limit "${{ github.event.inputs.queries || 20 }}" \
+            --repeats "${{ github.event.inputs.repeats || 1 }}" \
+            --concurrency 4
+
+      - name: Extract
+        env:
+          WORKER_PROVIDER: anthropic
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+        run: node pipeline/src/run.js extract --concurrency 4
+
+      - name: Verify claims against the pages they cite
+        if: ${{ github.event.inputs.verify != 'false' }}
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY:     ${{ secrets.GEMINI_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+        run: node pipeline/src/run.js verify --limit 60
+
+      - name: Build the bundle
+        run: |
+          node pipeline/src/run.js build
+          cp pipeline/data/records.json records.json
+
+      - name: Commit
+        run: |
+          git config user.name  "answer-space[bot]"
+          git config user.email "answer-space@users.noreply.github.com"
+          git add records.json pipeline/data
+          if git diff --staged --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "collect: snapshot $(date -u +%F)"
+            git push
+          fi

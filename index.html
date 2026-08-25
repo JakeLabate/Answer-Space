@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Answer Space</title>
+<meta name="description" content="Measure how AI assistants answer questions about your category — whether you appear at all, which sources they cite, what those answers claim, and whether the claims are true.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%234d9cff'/%3E%3Ccircle cx='12' cy='12' r='5' fill='%23bfe0ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="viz.css">
+</head>
+<body>
+
+<div id="dash">
+  <header id="dhead">
+    <div class="orb" aria-hidden="true"></div>
+    <div>
+      <h1>Answer Space</h1>
+      <div class="sub" id="dsub">AI answer surface · setup</div>
+    </div>
+    <div class="grow"></div>
+    <span class="pill" id="enginePill">no engine</span>
+    <span class="pill" id="dataPill">no data</span>
+    <button class="btn sm ghost" id="btnExport">Export</button>
+    <button class="btn sm ghost" id="btnWipe" title="Clear everything stored in this browser">Reset</button>
+  </header>
+
+  <div id="dbody">
+    <nav id="steps" aria-label="Setup steps"></nav>
+    <main id="panes">
+
+      <!-- 1 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-keys">
+        <h2>Connect the assistants</h2>
+        <p class="lede">Keys are stored in this browser only and go straight to each vendor's API. Nothing is sent to any server of mine, because there is no server of mine — this page is static.</p>
+
+        <div id="chanlist"></div>
+
+        <div class="note" id="corsNote"><b>Why three of them are greyed out.</b> Browsers cannot call the OpenAI, Perplexity or SerpApi endpoints directly — they refuse cross-origin requests, and SerpApi says so explicitly. Those three run through GitHub Actions instead, which you set up in step 5. Claude and Gemini work right here with no infrastructure at all.</div>
+
+        <h3>Or try it without keys</h3>
+        <div class="card">
+          <div class="row">
+            <div style="flex:1;min-width:220px">
+              <h4>Demo mode</h4>
+              <p>Fabricates a realistic profile, query set and answers locally. Nothing is called, nothing is charged. Use it to see the whole flow before you commit a budget.</p>
+            </div>
+            <button class="btn" id="btnDemo" aria-pressed="false">Enable demo mode</button>
+          </div>
+        </div>
+
+        <div class="btnbar">
+          <button class="btn primary" data-go="target">Continue →</button>
+          <span class="hint" id="keysHint"></span>
+        </div>
+      </section>
+
+      <!-- 2 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-target">
+        <h2>What are we measuring?</h2>
+        <p class="lede">Give me a domain. I'll read the site and work out the brand, the product, who it competes with, and the topics buyers actually argue about. You get to correct all of it on the next screen.</p>
+
+        <div class="card">
+          <div class="row top">
+            <div style="flex:2;min-width:240px">
+              <label class="f" for="site">Website</label>
+              <input type="text" id="site" placeholder="paypal.com" autocomplete="off" spellcheck="false">
+            </div>
+            <div style="flex:3;min-width:260px">
+              <label class="f" for="hint">Which product, specifically? (optional)</label>
+              <input type="text" id="hint" placeholder="the digital wallet, consumer and merchant side" autocomplete="off">
+            </div>
+          </div>
+          <div class="hint">The hint matters when a company sells many things. Without it you may end up measuring the wrong product line.</div>
+        </div>
+
+        <div class="btnbar">
+          <button class="btn primary" id="btnAnalyze">Analyse site</button>
+          <span class="hint" id="targetStatus"></span>
+        </div>
+      </section>
+
+      <!-- 3 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-refine">
+        <h2>Fix what it got wrong</h2>
+        <p class="lede">This is the highest-leverage screen in the app. Everything downstream inherits these decisions, and a bad competitor list quietly corrupts twelve weeks of data.</p>
+
+        <div class="card">
+          <div class="row top">
+            <div style="flex:1;min-width:200px">
+              <label class="f" for="brandName">Brand</label>
+              <input type="text" id="brandName">
+            </div>
+            <div style="flex:1;min-width:200px">
+              <label class="f" for="prodName">Product being measured</label>
+              <input type="text" id="prodName">
+            </div>
+          </div>
+          <div style="margin-top:11px">
+            <label class="f" for="aliases">Also called (comma separated)</label>
+            <input type="text" id="aliases" placeholder="PayPal Wallet, PayPal Balance">
+          </div>
+        </div>
+
+        <h3>Competitors</h3>
+        <div class="note info">Mark anything you <b>own</b> as a sibling. A brand you own is not a rival — but it is still worth tracking, because assistants routinely confuse a parent brand with its subsidiary, and that confusion is findable in the data.</div>
+        <div class="list" id="complist"></div>
+        <div class="row" style="margin-top:9px">
+          <input type="text" id="newComp" placeholder="Add a competitor" style="max-width:280px">
+          <button class="btn sm" id="btnAddComp">Add</button>
+        </div>
+
+        <h3>Topics</h3>
+        <p class="hint" style="margin:-4px 0 10px">Keep names short — two or three words. They become axis labels in the 3D views and long ones clip.</p>
+        <div class="list" id="themelist"></div>
+        <div class="row" style="margin-top:9px">
+          <input type="text" id="newTheme" placeholder="Add a topic" style="max-width:280px">
+          <button class="btn sm" id="btnAddTheme">Add</button>
+        </div>
+
+        <div class="btnbar">
+          <button class="btn primary" id="btnToFacts">Continue →</button>
+          <span class="hint" id="refineStatus"></span>
+        </div>
+      </section>
+
+      <!-- 4 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-facts">
+        <h2>Ground truth</h2>
+        <p class="lede">Optional, and the highest-return five minutes in the whole setup. Paste what is actually true about you — prices, limits, features, guarantees. Every answer then gets checked against it, and contradictions come back as flagged findings instead of as sentiment.</p>
+
+        <div class="note info"><b>This is what turns opinion into evidence.</b> "An assistant is negative about us" starts an argument. "An assistant told 40 people our fee is 2.9% when we cut it to 2.59% in March, citing a 2023 page" ends one.</div>
+
+        <div class="card">
+          <label class="f" for="facts">Verified facts — one per line</label>
+          <textarea id="facts" rows="12" spellcheck="false" placeholder="Standard processing fee is 2.59% + $0.49 per domestic transaction, effective March 2026.
+Instant transfer costs 1.5%, capped at $15.
+Free plan includes 3 seats. It has included 3 seats since launch; it was never 5.
+We support 14 currencies, not 40.
+There is no minimum contract term on the Starter plan.
+Buyer protection covers eligible physical goods only, never digital services."></textarea>
+          <div class="hint">Write them as flat assertions with dates where it matters. The extractor only flags direct contradictions — it stays quiet about anything this list is silent on, so a short accurate list beats a long speculative one.</div>
+        </div>
+
+        <div class="btnbar">
+          <button class="btn primary" id="btnToQueries">Write the query set →</button>
+          <button class="btn ghost" id="btnSkipFacts">Skip for now</button>
+          <span class="hint" id="factsStatus"></span>
+        </div>
+      </section>
+
+      <!-- 5 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-queries">
+        <h2>The query set</h2>
+        <p class="lede">These get sent verbatim, every run, forever. Once you start collecting, changing them breaks week-over-week comparison — so read them now. Roughly 60% deliberately do not name you: that is where you find out whether you get surfaced at all.</p>
+
+        <div class="metrics" id="qmetrics"></div>
+        <div class="scroller"><table class="qtable" id="qtable"></table></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm" id="btnAddQ">Add query</button>
+          <button class="btn sm ghost" id="btnRegen">Regenerate all</button>
+          <span class="hint" id="qStatus"></span>
+        </div>
+
+        <div class="btnbar">
+          <button class="btn primary" data-go="collect">Freeze and continue →</button>
+        </div>
+      </section>
+
+      <!-- 5 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-collect">
+        <h2>Collect</h2>
+        <p class="lede">Each run is one snapshot. Run it weekly and the timeline builds itself. Answers are stored in this browser as they arrive, so a closed tab costs you the run in progress, not the history.</p>
+
+        <div class="card">
+          <div class="row top">
+            <div style="flex:1;min-width:150px">
+              <label class="f" for="scanQ">Queries this run</label>
+              <input type="number" id="scanQ" min="1" max="200" value="20">
+            </div>
+            <div style="flex:1;min-width:150px">
+              <label class="f" for="scanR">Repeats per query</label>
+              <input type="number" id="scanR" min="1" max="5" value="1">
+            </div>
+            <div style="flex:1;min-width:150px">
+              <label class="f" for="scanDate">Snapshot date</label>
+              <input type="text" id="scanDate" placeholder="YYYY-MM-DD">
+            </div>
+          </div>
+          <div class="row top" style="margin-top:11px">
+            <label class="toggle" id="verifyToggle" aria-pressed="true" style="cursor:pointer">
+              <span>◆</span> Verify claims against the pages they cite
+            </label>
+            <div style="width:150px">
+              <label class="f" for="verifyMax">Claims to check</label>
+              <input type="number" id="verifyMax" min="5" max="400" value="40">
+            </div>
+          </div>
+          <div class="hint" id="scanEstimate"></div>
+        </div>
+
+        <div class="note"><b>Repeats are the measurement, not a luxury.</b> Ask the same question three times and you get three different answers — sometimes you are in two of them and absent from the third. One repeat cannot tell you that; it just reports whichever roll it got. Three is the floor for the volatility numbers to mean anything.</div>
+
+        <div class="metrics" id="runmetrics"></div>
+        <div class="meter"><i id="bar" style="width:0%"></i></div>
+        <div id="log"><div class="d">idle</div></div>
+
+        <div class="btnbar">
+          <button class="btn primary" id="btnRun">Run collection</button>
+          <button class="btn" id="btnStop" disabled>Stop</button>
+          <button class="btn ghost" id="btnBuild">Rebuild dataset</button>
+        </div>
+
+        <h3>All five channels, via GitHub Actions</h3>
+        <p class="hint" style="margin:-4px 0 12px">The repo you deployed this from can run the full pipeline for you — including ChatGPT, Perplexity and AI Overviews, which browsers cannot reach. Put the keys in <b>Settings → Secrets → Actions</b>, then trigger a run from here.</p>
+        <div class="card tight">
+          <div class="row top">
+            <div style="flex:1;min-width:190px">
+              <label class="f" for="ghRepo">Repository</label>
+              <input type="text" id="ghRepo" placeholder="jakelabate/answer-space">
+            </div>
+            <div style="flex:1;min-width:190px">
+              <label class="f" for="ghPat">Token with <code>contents:write</code> + <code>actions:write</code></label>
+              <input type="password" id="ghPat" placeholder="github_pat_…">
+            </div>
+          </div>
+          <div class="row" style="margin-top:11px">
+            <button class="btn sm" id="btnDispatch">Trigger workflow</button>
+            <button class="btn sm ghost" id="btnPull">Pull latest records.json</button>
+            <span class="hint" id="ghStatus"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 ───────────────────────────────────────────────────────── -->
+      <section class="pane" id="p-explore">
+        <h2>Explore</h2>
+        <p class="lede">Six ways into the same run. Coverage answers whether you showed up at all; the other five describe what happened when you did.</p>
+        <div class="metrics" id="dsmetrics"></div>
+        <div class="btnbar" style="border:none;padding-top:0;margin-top:6px">
+          <button class="btn primary" id="btnOpenViz">Open the explorer</button>
+          <button class="btn ghost" id="btnDownload">Download records.json</button>
+          <label class="btn ghost" for="fileIn" style="cursor:pointer">Import records.json<input type="file" id="fileIn" accept="application/json" hidden></label>
+        </div>
+        <div class="hint" id="exploreStatus" style="margin-top:12px"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="app">
+  <header id="top">
+    <div class="brandmark">
+      <div class="orb" aria-hidden="true"></div>
+      <div>
+        <h1>Answer Space</h1>
+        <div class="sub" id="subline">no dataset loaded</div>
+      </div>
+    </div>
+    <button id="backToSetup" title="Back to the dashboard">← Setup</button>
+    <nav id="viewtabs" aria-label="Visualisation modes"></nav>
+    <div class="spacer"></div>
+    <div class="topmeta" id="scopemeta"></div>
+    <button class="iconbtn" id="btn-table" title="Read the same numbers as a table">Table</button>
+    <button class="iconbtn" id="btn-l" title="Toggle filter rail">◧</button>
+    <button class="iconbtn" id="btn-r" title="Toggle readout rail">◨</button>
+  </header>
+
+  <div id="stage">
+    <canvas id="scene"></canvas>
+
+    <aside class="rail" id="rail-l" aria-label="Filters">
+      <div class="rail-scroll">
+        <div class="sec">
+          <div class="sec-h"><span>Angles</span><button id="reset-all">Reset</button></div>
+          <div id="presets"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>AI platform</span><button data-all="platform">All</button></div>
+          <div class="chips" id="f-platform"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Source type</span><button data-all="stype">All</button></div>
+          <div class="chips" id="f-stype"></div>
+          <div class="field" style="margin-top:10px">
+            <label for="srcsearch">Individual sources</label>
+            <input type="search" id="srcsearch" placeholder="reddit, nerdwallet, paypal…" autocomplete="off">
+          </div>
+          <div class="srclist" id="f-source"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Sentiment band</span><button data-all="band">All</button></div>
+          <div class="chips" id="f-band"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Head-to-head</span><button data-all="verdict">All</button></div>
+          <div class="chips" id="f-verdict"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Can we act on it?</span><button data-all="influence">All</button></div>
+          <div class="chips" id="f-influence"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Only show</span><button id="clr-flags">None</button></div>
+          <div class="chips" id="f-flags"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Topic</span><button data-all="theme">All</button></div>
+          <div class="chips" id="f-theme"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Wallet mentioned</span><button data-all="brand">All</button></div>
+          <div class="chips" id="f-brand"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Query intent</span><button data-all="intent">All</button></div>
+          <div class="chips" id="f-intent"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Encoding</span></div>
+          <div class="field">
+            <label for="colorby">Colour marks by</label>
+            <select id="colorby">
+              <option value="sentiment">Sentiment (diverging)</option>
+              <option value="stype">Source type (3 + other)</option>
+              <option value="brand">Wallet mentioned</option>
+              <option value="none">Uniform</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sizeby">Size marks by</label>
+            <select id="sizeby">
+              <option value="citations">Citation volume</option>
+              <option value="authority">Source authority</option>
+              <option value="rank">Answer prominence</option>
+              <option value="uniform">Uniform</option>
+            </select>
+          </div>
+        </div>
+        <div class="sec" id="axis-sec" hidden>
+          <div class="sec-h"><span>Sentiment-space axes</span></div>
+          <div class="field"><label for="ax-x">X axis</label><select id="ax-x"></select></div>
+          <div class="field"><label for="ax-y">Y axis</label><select id="ax-y"></select></div>
+          <div class="field"><label for="ax-z">Z axis</label><select id="ax-z"></select></div>
+        </div>
+        <div class="sec" id="cover-sec" hidden>
+          <div class="sec-h"><span>Coverage grid</span></div>
+          <div class="field"><label for="cv-rows">Rows</label><select id="cv-rows"></select></div>
+          <div class="field"><label for="cv-cols">Columns</label><select id="cv-cols"></select></div>
+        </div>
+        <div class="sec" id="matrix-sec" hidden>
+          <div class="sec-h"><span>Landscape grid</span></div>
+          <div class="field"><label for="mx-rows">Rows</label><select id="mx-rows"></select></div>
+          <div class="field"><label for="mx-cols">Columns</label><select id="mx-cols"></select></div>
+          <div class="field"><label for="mx-h">Bar height</label><select id="mx-h">
+            <option value="citations">Citations</option>
+            <option value="answers">Answers appeared in</option>
+            <option value="share">Share of citations %</option>
+          </select></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Time window</span></div>
+          <div class="field">
+            <div class="rangewrap">
+              <input type="range" id="wk-from" min="1" max="12" value="1" aria-label="First week">
+              <span class="val" id="wk-lab">W1–W12</span>
+            </div>
+            <div class="rangewrap" style="margin-top:4px">
+              <input type="range" id="wk-to" min="1" max="12" value="12" aria-label="Last week">
+              <span class="val" style="font-size:9.5px;color:var(--ink-3)">12-wk run</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="rail" id="rail-r" aria-label="Readout">
+      <div class="detail-h">
+        <button class="clr" id="clr-sel" hidden>Clear ✕</button>
+        <div class="t" id="det-t">Everything in scope</div>
+        <div class="s" id="det-s">Click any node to drill in</div>
+      </div>
+      <div class="rail-scroll" id="rail-r-body"></div>
+    </aside>
+
+    <div id="bottom">
+      <div class="legend">
+        <span>NEG</span><span class="ramp" id="ramp" role="img" aria-label="Sentiment scale from negative to positive"></span><span>POS</span>
+      </div>
+      <div class="vsep"></div>
+      <div class="legend" id="glyphkey"></div>
+      <div class="vsep"></div>
+      <div id="hint"></div>
+    </div>
+
+    <div id="tip" role="tooltip"></div>
+
+    <div id="tablewrap">
+      <button id="closetable">Close ✕</button>
+      <h2>Citation records in scope</h2>
+      <p>The same data the 3D scene is drawing, without colour as a channel. Sorted by citation volume.</p>
+      <div id="tablebody"></div>
+    </div>
+  </div>
+</div>
+
+<script>window.ANSWER_SPACE_APP=true;</script>
+<script src="viz.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

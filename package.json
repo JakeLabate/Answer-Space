@@ -1,0 +1,11 @@
+{
+  "name": "answer-space",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Measure how AI assistants answer questions in your category — whether you appear, who they cite, what they claim, and whether it is true.",
+  "scripts": {
+    "build:standalone": "node build-standalone.mjs",
+    "serve": "node pipeline/src/serve.js"
+  }
+}

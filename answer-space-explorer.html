@@ -1,0 +1,2092 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Answer Space</title>
+<meta name="description" content="A 3D read of how AI assistants answer questions in your category: whether you appear at all, which sources they cite, and what the answers claim.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%234d9cff'/%3E%3Ccircle cx='12' cy='12' r='5' fill='%23bfe0ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ── Wallet Answer Space ───────────────────────────────────────────────
+   Deliberately single-theme: this is an instrument screen, a lit field of
+   citations over a dark ground. Every colour is painted explicitly so the
+   page holds on either host background.
+   Hue has exactly one job in the 3D scene: SENTIMENT (diverging blue↔red,
+   grey midpoint). Platform and source identity is carried by label, glyph
+   and position — never by hue alone.
+   ──────────────────────────────────────────────────────────────────── */
+:root{
+  --ground:#070b16;
+  --ground-2:#0b1120;
+  --panel:rgba(12,18,33,.86);
+  --panel-solid:#0c1221;
+  --raise:#131b2e;
+  --line:#1e2942;
+  --line-soft:#182135;
+  --ink:#e8edf8;
+  --ink-2:#9aa8c4;
+  --ink-3:#6a7794;
+  --accent:#4d9cff;
+  --accent-dim:#1c3d6b;
+  --pos:#4d9cff;
+  --neg:#ff6b6b;
+  --mid:#67718c;
+  --cat-1:#3987e5;
+  --cat-2:#d95926;
+  --cat-3:#199e70;
+  --cat-other:#6b7688;
+  --warn:#c98500;
+  --r:3px;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Archivo","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--ground);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1c2740;border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#2a3a5c;background-clip:padding-box}
+
+#app{position:fixed;inset:0;display:grid;grid-template-rows:52px 1fr;background:var(--ground);
+  max-width:100vw;overflow:hidden}
+#stage{position:relative;overflow:hidden;min-width:0}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+#scene.dragging{cursor:grabbing}
+
+/* ── top bar ─────────────────────────────────────────────── */
+#top{
+  display:flex;align-items:center;gap:14px;padding:0 14px;
+  background:var(--ground-2);border-bottom:1px solid var(--line);
+  position:relative;z-index:20;min-width:0;
+}
+.brandmark{display:flex;align-items:center;gap:9px;padding-right:14px;border-right:1px solid var(--line);min-width:0;flex:0 1 auto}
+.brandmark>div{min-width:0}
+.orb{width:20px;height:20px;border-radius:50%;flex:none;
+  background:radial-gradient(circle at 34% 32%,#8fc2ff 0%,#3d7fd6 42%,#0d2547 100%);
+  box-shadow:0 0 12px rgba(77,156,255,.55)}
+.brandmark h1{font-size:14px;font-weight:600;margin:0;letter-spacing:-.01em;white-space:nowrap}
+.brandmark .sub{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.09em;text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(46vw,430px)}
+#viewtabs{display:flex;gap:2px;min-width:0;flex:0 1 auto;overflow-x:auto;scrollbar-width:none}
+#viewtabs::-webkit-scrollbar{display:none}
+#viewtabs button{
+  padding:6px 11px;border-radius:var(--r);font-size:12.5px;color:var(--ink-2);
+  border:1px solid transparent;white-space:nowrap;transition:background .12s,color .12s
+}
+#viewtabs button:hover{background:#141d31;color:var(--ink)}
+#viewtabs button[aria-pressed="true"]{background:var(--accent-dim);border-color:#2f5f9e;color:#dce9ff}
+.spacer{flex:1}
+.topmeta{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.05em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;min-width:0}
+.topmeta b{color:var(--ink-2);font-weight:500}
+.iconbtn{padding:5px 9px;border:1px solid var(--line);border-radius:var(--r);color:var(--ink-2);font-size:11.5px}
+.iconbtn:hover{background:#141d31;color:var(--ink)}
+
+/* ── rails ───────────────────────────────────────────────── */
+.rail{
+  position:absolute;top:12px;bottom:12px;width:266px;z-index:10;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:5px;
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 18px 44px rgba(0,0,0,.5);
+  transition:transform .22s ease,opacity .22s ease;
+}
+#rail-l{left:12px}
+#rail-r{right:12px;width:322px}
+#rail-l.hidden{transform:translateX(-292px);opacity:0;pointer-events:none}
+#rail-r.hidden{transform:translateX(348px);opacity:0;pointer-events:none}
+.rail-scroll{overflow-y:auto;overflow-x:hidden;padding:0 0 14px;flex:1}
+.sec{border-bottom:1px solid var(--line-soft);padding:12px 13px 13px}
+.sec:last-child{border-bottom:none}
+.sec-h{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)
+}
+.sec-h button{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-3);text-transform:uppercase}
+.sec-h button:hover{color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--r);
+  border:1px solid var(--line);background:#0e1626;color:var(--ink-3);
+  font-size:11.5px;line-height:1.2;transition:all .12s;max-width:100%
+}
+.chip:hover{border-color:#2b3a5c;color:var(--ink-2)}
+.chip[aria-pressed="true"]{background:#14243f;border-color:#35618f;color:#dbe7fa}
+.chip .dot{width:7px;height:7px;border-radius:2px;flex:none;background:var(--cat-other)}
+.chip .n{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.chip[aria-pressed="true"] .n{color:#8fb6e6}
+.chip.wide{width:100%;justify-content:space-between}
+.preset{
+  display:block;width:100%;text-align:left;padding:7px 9px;margin-bottom:4px;border-radius:var(--r);
+  border:1px solid var(--line);background:#0e1626;font-size:12px;color:var(--ink-2);transition:all .12s
+}
+.preset:hover{background:#152440;border-color:#35618f;color:var(--ink)}
+.preset small{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.03em;margin-top:2px}
+.preset:hover small{color:#7f97bd}
+.field{margin-bottom:9px}
+.field:last-child{margin-bottom:0}
+.field label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+select,input[type=search]{
+  width:100%;padding:6px 8px;background:#0e1626;border:1px solid var(--line);border-radius:var(--r);
+  color:var(--ink);font-size:12px;font-family:var(--sans)
+}
+select:hover,input[type=search]:hover{border-color:#2b3a5c}
+input[type=range]{width:100%;accent-color:var(--accent);background:transparent}
+.rangewrap{display:flex;align-items:center;gap:8px}
+.rangewrap .val{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
+.srclist{max-height:184px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;padding-right:3px;margin-top:6px}
+.srcrow{
+  display:grid;grid-template-columns:8px 1fr auto auto;align-items:center;gap:7px;
+  padding:4px 6px;border-radius:var(--r);border:1px solid transparent;cursor:pointer;text-align:left;width:100%
+}
+.srcrow:hover{background:#131d31}
+.srcrow[aria-pressed="true"]{background:#14243f;border-color:#2c4d76}
+.srcrow .sq{width:8px;height:8px;border-radius:2px}
+.srcrow .nm{font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srcrow[aria-pressed="true"] .nm{color:var(--ink)}
+.srcrow .ct{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.srcrow .sb{width:30px;height:4px;border-radius:2px;background:#1b2540;position:relative;overflow:hidden}
+.srcrow .sb i{position:absolute;top:0;bottom:0;display:block}
+
+/* ── right rail ──────────────────────────────────────────── */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line-soft)}
+.kpi{background:var(--panel-solid);padding:10px 12px}
+.kpi .k{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.kpi .v{font-family:var(--mono);font-size:21px;font-weight:600;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+.kpi .d{font-size:10.5px;color:var(--ink-3);margin-top:1px}
+.splitbar{display:flex;height:7px;border-radius:2px;overflow:hidden;gap:2px;margin-top:8px;background:transparent}
+.splitbar i{display:block;height:100%;border-radius:1px}
+.splitkey{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:5px;font-variant-numeric:tabular-nums}
+.bars{display:flex;flex-direction:column;gap:6px}
+.bar{display:grid;grid-template-columns:1fr;gap:3px;cursor:pointer}
+.bar .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.bar .lb{font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar:hover .lb{color:var(--ink)}
+.bar .vv{font-family:var(--mono);font-size:10px;color:var(--ink-3);font-variant-numeric:tabular-nums;flex:none}
+.bar .track{height:6px;background:#141e33;border-radius:2px;overflow:hidden}
+.bar .track i{display:block;height:100%;border-radius:2px}
+.empty{padding:18px 13px;color:var(--ink-3);font-size:12px;text-align:center;line-height:1.6}
+.snips{display:flex;flex-direction:column;gap:8px}
+.snip{border:1px solid var(--line);border-left-width:2px;border-radius:var(--r);background:#0d1626;padding:9px 10px}
+.snip .sh{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.snip .plat{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;color:var(--ink-2);text-transform:uppercase}
+.snip .sep{color:var(--ink-3);font-size:9px}
+.snip .src{font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.snip .score{margin-left:auto;font-family:var(--mono);font-size:10px;font-variant-numeric:tabular-nums;font-weight:600}
+.snip q{display:block;font-size:12.5px;color:#cfd9ec;line-height:1.5;quotes:none}
+.snip .q0{font-size:10.5px;color:var(--ink-3);margin-bottom:5px;line-height:1.4}
+.snip .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.tag{font-family:var(--mono);font-size:9px;letter-spacing:.04em;padding:2px 5px;border-radius:2px;background:#16223a;color:#8fa1c2;border:1px solid #1f2c47}
+.tag.tone{background:#1a2033;color:#b3a37e;border-color:#2c2a2e}
+.tag.bad{background:#2a1419;color:#ffb3b3;border-color:#4a2530}
+.tag.warn{background:#241d0d;color:#e0b558;border-color:#5c4a1f}
+.tag.good{background:#0f2237;color:#9cc6ff;border-color:#2c4d76}
+.detail-h{padding:11px 13px;border-bottom:1px solid var(--line-soft);background:#0b1322}
+.detail-h .t{font-size:14px;font-weight:600;letter-spacing:-.01em}
+.detail-h .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.05em;margin-top:2px}
+.detail-h .clr{float:right;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.08em}
+.detail-h .clr:hover{color:var(--accent)}
+
+/* ── bottom bar ──────────────────────────────────────────── */
+#bottom{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:12px;z-index:10;
+  display:flex;align-items:center;gap:16px;padding:8px 14px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);border-radius:5px;box-shadow:0 14px 34px rgba(0,0,0,.45);
+  max-width:calc(100% - 640px)
+}
+.legend{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em;white-space:nowrap}
+.ramp{width:112px;height:7px;border-radius:2px;
+  background:linear-gradient(90deg,#ff6b6b 0%,#b3606f 24%,#67718c 50%,#5f83bd 76%,#4d9cff 100%)}
+.legend .gl{display:inline-flex;align-items:center;gap:5px}
+.gl svg{display:block}
+.vsep{width:1px;height:20px;background:var(--line)}
+#hint{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hint b{color:var(--ink-2);font-weight:500}
+
+/* ── tooltip ─────────────────────────────────────────────── */
+#tip{
+  position:absolute;z-index:30;pointer-events:none;opacity:0;transition:opacity .1s;
+  background:#0b1322f2;border:1px solid #2b3a5c;border-radius:4px;padding:8px 10px;
+  max-width:270px;box-shadow:0 10px 26px rgba(0,0,0,.6)
+}
+#tip .tt{font-size:12.5px;font-weight:600;margin-bottom:3px;line-height:1.3}
+#tip .tm{font-family:var(--mono);font-size:10px;color:var(--ink-3);line-height:1.6;letter-spacing:.02em}
+#tip .tm b{color:var(--ink-2);font-weight:500}
+#tip .tk{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+
+/* ── data-table fallback (non-colour path to the same numbers) ── */
+#tablewrap{
+  position:absolute;inset:0;z-index:25;background:#070b16f7;overflow:auto;padding:56px 24px 24px;display:none
+}
+#tablewrap.on{display:block}
+#tablewrap h2{font-size:16px;margin:0 0 4px}
+#tablewrap p{color:var(--ink-3);font-size:12px;margin:0 0 16px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);position:sticky;top:0;background:#0a1020}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+#closetable{position:absolute;top:14px;right:20px;border:1px solid var(--line);padding:5px 10px;border-radius:var(--r);font-size:11.5px;color:var(--ink-2)}
+
+@media (max-width:1320px){ .topmeta{display:none} }
+@media (max-width:1180px){
+  #rail-r{width:290px}
+  #bottom{max-width:calc(100% - 600px)}
+  #viewtabs button{padding:6px 8px;font-size:12px}
+}
+@media (max-width:900px){
+  .rail{position:absolute;width:min(300px,84vw)}
+  #bottom{max-width:calc(100% - 24px);flex-wrap:wrap}
+  #hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .rail{transition:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="brandmark">
+      <div class="orb" aria-hidden="true"></div>
+      <div>
+        <h1>Answer Space</h1>
+        <div class="sub" id="subline">no dataset loaded</div>
+      </div>
+    </div>
+    <nav id="viewtabs" aria-label="Visualisation modes"></nav>
+    <div class="spacer"></div>
+    <div class="topmeta" id="scopemeta"></div>
+    <button class="iconbtn" id="btn-table" title="Read the same numbers as a table">Table</button>
+    <button class="iconbtn" id="btn-l" title="Toggle filter rail">◧</button>
+    <button class="iconbtn" id="btn-r" title="Toggle readout rail">◨</button>
+  </header>
+
+  <div id="stage">
+    <canvas id="scene"></canvas>
+
+    <aside class="rail" id="rail-l" aria-label="Filters">
+      <div class="rail-scroll">
+        <div class="sec">
+          <div class="sec-h"><span>Angles</span><button id="reset-all">Reset</button></div>
+          <div id="presets"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>AI platform</span><button data-all="platform">All</button></div>
+          <div class="chips" id="f-platform"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Source type</span><button data-all="stype">All</button></div>
+          <div class="chips" id="f-stype"></div>
+          <div class="field" style="margin-top:10px">
+            <label for="srcsearch">Individual sources</label>
+            <input type="search" id="srcsearch" placeholder="reddit, nerdwallet, paypal…" autocomplete="off">
+          </div>
+          <div class="srclist" id="f-source"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Sentiment band</span><button data-all="band">All</button></div>
+          <div class="chips" id="f-band"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Head-to-head</span><button data-all="verdict">All</button></div>
+          <div class="chips" id="f-verdict"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Can we act on it?</span><button data-all="influence">All</button></div>
+          <div class="chips" id="f-influence"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Only show</span><button id="clr-flags">None</button></div>
+          <div class="chips" id="f-flags"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Topic</span><button data-all="theme">All</button></div>
+          <div class="chips" id="f-theme"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Wallet mentioned</span><button data-all="brand">All</button></div>
+          <div class="chips" id="f-brand"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Query intent</span><button data-all="intent">All</button></div>
+          <div class="chips" id="f-intent"></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Encoding</span></div>
+          <div class="field">
+            <label for="colorby">Colour marks by</label>
+            <select id="colorby">
+              <option value="sentiment">Sentiment (diverging)</option>
+              <option value="stype">Source type (3 + other)</option>
+              <option value="brand">Wallet mentioned</option>
+              <option value="none">Uniform</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sizeby">Size marks by</label>
+            <select id="sizeby">
+              <option value="citations">Citation volume</option>
+              <option value="authority">Source authority</option>
+              <option value="rank">Answer prominence</option>
+              <option value="uniform">Uniform</option>
+            </select>
+          </div>
+        </div>
+        <div class="sec" id="axis-sec" hidden>
+          <div class="sec-h"><span>Sentiment-space axes</span></div>
+          <div class="field"><label for="ax-x">X axis</label><select id="ax-x"></select></div>
+          <div class="field"><label for="ax-y">Y axis</label><select id="ax-y"></select></div>
+          <div class="field"><label for="ax-z">Z axis</label><select id="ax-z"></select></div>
+        </div>
+        <div class="sec" id="cover-sec" hidden>
+          <div class="sec-h"><span>Coverage grid</span></div>
+          <div class="field"><label for="cv-rows">Rows</label><select id="cv-rows"></select></div>
+          <div class="field"><label for="cv-cols">Columns</label><select id="cv-cols"></select></div>
+        </div>
+        <div class="sec" id="matrix-sec" hidden>
+          <div class="sec-h"><span>Landscape grid</span></div>
+          <div class="field"><label for="mx-rows">Rows</label><select id="mx-rows"></select></div>
+          <div class="field"><label for="mx-cols">Columns</label><select id="mx-cols"></select></div>
+          <div class="field"><label for="mx-h">Bar height</label><select id="mx-h">
+            <option value="citations">Citations</option>
+            <option value="answers">Answers appeared in</option>
+            <option value="share">Share of citations %</option>
+          </select></div>
+        </div>
+        <div class="sec">
+          <div class="sec-h"><span>Time window</span></div>
+          <div class="field">
+            <div class="rangewrap">
+              <input type="range" id="wk-from" min="1" max="12" value="1" aria-label="First week">
+              <span class="val" id="wk-lab">W1–W12</span>
+            </div>
+            <div class="rangewrap" style="margin-top:4px">
+              <input type="range" id="wk-to" min="1" max="12" value="12" aria-label="Last week">
+              <span class="val" style="font-size:9.5px;color:var(--ink-3)">12-wk run</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <aside class="rail" id="rail-r" aria-label="Readout">
+      <div class="detail-h">
+        <button class="clr" id="clr-sel" hidden>Clear ✕</button>
+        <div class="t" id="det-t">Everything in scope</div>
+        <div class="s" id="det-s">Click any node to drill in</div>
+      </div>
+      <div class="rail-scroll" id="rail-r-body"></div>
+    </aside>
+
+    <div id="bottom">
+      <div class="legend">
+        <span>NEG</span><span class="ramp" id="ramp" role="img" aria-label="Sentiment scale from negative to positive"></span><span>POS</span>
+      </div>
+      <div class="vsep"></div>
+      <div class="legend" id="glyphkey"></div>
+      <div class="vsep"></div>
+      <div id="hint"></div>
+    </div>
+
+    <div id="tip" role="tooltip"></div>
+
+    <div id="tablewrap">
+      <button id="closetable">Close ✕</button>
+      <h2>Citation records in scope</h2>
+      <p>The same data the 3D scene is drawing, without colour as a channel. Sorted by citation volume.</p>
+      <div id="tablebody"></div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════════════
+   1 · MODEL — synthetic but structurally honest
+   Every row is one CITATION: a source that a named AI platform leaned on
+   while answering a named query, plus what it actually said about a wallet.
+   Swap DATA.records for a real export and the whole tool re-renders.
+   ══════════════════════════════════════════════════════════════════════ */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const RNG=mulberry32(20260821);
+const rnd=()=>RNG(), pick=a=>a[Math.floor(RNG()*a.length)];
+function wpick(items){const t=items.reduce((s,i)=>s+i.w,0);let r=RNG()*t;for(const i of items){r-=i.w;if(r<=0)return i}return items[items.length-1]}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+
+let PLATFORMS=[
+ {id:"chatgpt", name:"ChatGPT",           glyph:"hex",  w:.32, cites:[2,5], bias:{community:2.1,editorial:1.3,review:1.1,owned:.7,reference:.7,video:.6}, mood:+.04, spread:.62},
+ {id:"aio",     name:"Google AI Overviews",glyph:"hex", w:.23, cites:[1,3], bias:{owned:1.9,reference:1.6,editorial:1.2,review:1.0,community:.7,video:1.1}, mood:+.10, spread:.44},
+ {id:"pplx",    name:"Perplexity",         glyph:"hex", w:.17, cites:[3,7], bias:{review:1.9,editorial:1.6,community:1.2,reference:.8,owned:.8,video:.5}, mood:-.02, spread:.70},
+ {id:"gemini",  name:"Gemini",             glyph:"hex", w:.13, cites:[2,4], bias:{reference:1.6,owned:1.4,editorial:1.1,video:1.3,review:.9,community:.7}, mood:+.06, spread:.52},
+ {id:"claude",  name:"Claude",             glyph:"hex", w:.09, cites:[2,4], bias:{editorial:1.6,reference:1.4,owned:1.1,review:1.0,community:.8,video:.3}, mood:-.01, spread:.40},
+ {id:"copilot", name:"Copilot",            glyph:"hex", w:.06, cites:[2,4], bias:{editorial:1.5,owned:1.3,review:1.2,reference:1.0,community:.6,video:.5}, mood:+.02, spread:.55},
+];
+
+const STYPES=[
+ {id:"community",name:"Community & forum", cat:0},
+ {id:"editorial", name:"Editorial & news",  cat:1},
+ {id:"review",    name:"Review & compare",  cat:2},
+ {id:"owned",     name:"Owned / brand",     cat:3},
+ {id:"reference", name:"Reference & docs",  cat:3},
+ {id:"video",     name:"Video & social",    cat:3},
+];
+
+let SOURCES=[
+ {id:"reddit",   dom:"reddit.com",          type:"community",auth:.62,tilt:-.30,w:2.9},
+ {id:"hackernews",dom:"news.ycombinator.com",type:"community",auth:.55,tilt:-.18,w:1.1},
+ {id:"trustpilot",dom:"trustpilot.com",     type:"community",auth:.44,tilt:-.52,w:.9},
+ {id:"quora",    dom:"quora.com",           type:"community",auth:.38,tilt:-.10,w:.6},
+ {id:"g2",       dom:"g2.com",              type:"review",   auth:.78,tilt:+.10,w:2.2},
+ {id:"capterra", dom:"capterra.com",        type:"review",   auth:.70,tilt:+.06,w:1.5},
+ {id:"trustradius",dom:"trustradius.com",   type:"review",   auth:.68,tilt:+.04,w:1.1},
+ {id:"pcmag",    dom:"pcmag.com",           type:"review",   auth:.76,tilt:+.18,w:1.2},
+ {id:"techcrunch",dom:"techcrunch.com",     type:"editorial",auth:.74,tilt:-.06,w:1.2},
+ {id:"theverge", dom:"theverge.com",        type:"editorial",auth:.77,tilt:-.12,w:.9},
+ {id:"zdnet",    dom:"zdnet.com",           type:"editorial",auth:.72,tilt:+.02,w:1.0},
+ {id:"forbes",   dom:"forbes.com",          type:"editorial",auth:.83,tilt:+.08,w:1.1},
+ {id:"northwind",dom:"northwind.example",   type:"owned",    auth:.88,tilt:+.70,w:2.3},
+ {id:"contoso",  dom:"contoso.example",     type:"owned",    auth:.80,tilt:+.62,w:1.2},
+ {id:"wikipedia",dom:"wikipedia.org",       type:"reference",auth:.80,tilt:+.02,w:1.4},
+ {id:"stackoverflow",dom:"stackoverflow.com",type:"reference",auth:.79,tilt:-.02,w:1.0},
+ {id:"docsdev",  dom:"docs.northwind.example",type:"reference",auth:.75,tilt:+.55,w:.9},
+ {id:"youtube",  dom:"youtube.com",         type:"video",    auth:.50,tilt:+.06,w:1.6},
+ {id:"medium",   dom:"medium.com",          type:"video",    auth:.34,tilt:-.08,w:.8},
+ {id:"producthunt",dom:"producthunt.com",   type:"video",    auth:.48,tilt:+.20,w:.7},
+];
+
+let THEMES=[
+ {id:"pricing",   name:"Pricing & plans",    tilt:-.30},
+ {id:"search",    name:"Search quality",     tilt:+.18},
+ {id:"integrations",name:"Integrations",     tilt:+.10},
+ {id:"security",  name:"Security & compliance",tilt:+.24},
+ {id:"migration", name:"Migration & import", tilt:-.26},
+ {id:"collab",    name:"Collaboration",      tilt:+.14},
+ {id:"support",   name:"Support & SLAs",     tilt:-.32},
+ {id:"ai",        name:"AI features",        tilt:-.10},
+];
+
+let BRANDS=[
+ {id:"client", name:"Northwind", client:true, w:1.00, tilt:+.00},
+ {id:"comp0",  name:"Contoso",       w:.88, tilt:+.24},
+ {id:"comp1",  name:"Fabrikam",      w:.66, tilt:+.14},
+ {id:"comp2",  name:"Adventure Works",w:.48, tilt:-.06},
+ {id:"comp3",  name:"Tailspin",      w:.34, tilt:+.02},
+ {id:"none",   name:"No brand (general)", w:.40, tilt:.00},
+];
+
+const INTENTS=[
+ {id:"compare",  name:"Comparison"},
+ {id:"recommend",name:"Recommendation"},
+ {id:"howto",    name:"How-to / setup"},
+ {id:"info",     name:"Informational"},
+ {id:"problem",  name:"Problem / complaint"},
+];
+
+let PROMPTS=[
+ ["best team knowledge base software 2026","recommend","search"],
+ ["notion alternative for a 200 person company","recommend","collab"],
+ ["cheapest wiki tool for a small team","recommend","pricing"],
+ ["how much does Northwind cost per seat","info","pricing"],
+ ["Northwind vs Contoso which is better","compare","search"],
+ ["knowledge base with the best search","recommend","search"],
+ ["is Northwind SOC 2 compliant","info","security"],
+ ["how to migrate from Confluence without losing history","howto","migration"],
+ ["knowledge base that integrates with Slack and Jira","recommend","integrations"],
+ ["why is our wiki search so bad","problem","search"],
+ ["Northwind pricing hidden costs","problem","pricing"],
+ ["best documentation tool for engineering teams","recommend","collab"],
+ ["does Northwind support SSO on the starter plan","info","security"],
+ ["knowledge base tools compared 2026","compare","pricing"],
+ ["how to import from Google Docs into a wiki","howto","migration"],
+ ["Northwind AI search accuracy","info","ai"],
+ ["wiki with good permissions and access control","recommend","security"],
+ ["Contoso vs Fabrikam for enterprise docs","compare","collab"],
+ ["Northwind support response times","problem","support"],
+ ["knowledge base with an open API","recommend","integrations"],
+ ["is Northwind worth it for a startup","compare","pricing"],
+ ["how do AI answers work in a company wiki","info","ai"],
+ ["migrating 10000 pages to a new wiki","howto","migration"],
+ ["best wiki for remote teams across timezones","recommend","collab"],
+ ["Northwind uptime and SLA","info","support"],
+ ["knowledge base that works offline","recommend","integrations"],
+ ["why did our Northwind import fail","problem","migration"],
+ ["most secure knowledge base for regulated industries","recommend","security"],
+ ["Northwind free plan limits","info","pricing"],
+ ["docs tool with version history and approvals","recommend","collab"],
+ ["Northwind vs Adventure Works search comparison","compare","search"],
+ ["how to get an enterprise discount on Northwind","howto","pricing"],
+ ["knowledge base AI that cites its sources","recommend","ai"],
+ ["Northwind data residency options","info","security"],
+ ["wiki tool with the fewest integrations problems","recommend","integrations"],
+ ["is Northwind support actually 24/7","problem","support"],
+ ["best knowledge base for customer support teams","recommend","support"],
+ ["Northwind API rate limits","info","integrations"],
+ ["how long does a wiki migration take","info","migration"],
+ ["which knowledge base has the best AI summaries","compare","ai"],
+].map((p,i)=>({id:"q"+i,text:p[0],intent:p[1],theme:p[2]}));
+
+/* What the assistant said, keyed theme x sentiment band. */
+const SNIP={
+ pricing:{
+  pos:["{s} is cited for {b}'s per-seat price being flat with no usage add-ons, and the answer treats that as the deciding factor.",
+       "The answer leans on {s} to say {b} is the cheapest option once viewer seats are counted as free.",
+       "{s} is used to argue {b}'s annual discount makes it the value pick for a growing team."],
+  neu:["The answer reproduces {b}'s published tiers from {s} without comment.",
+       "{s} supplies a pricing table; {b} sits mid-pack and the model presents the row flatly.",
+       "Cited purely for the number: {s} on {b}'s per-seat rate, no verdict."],
+  neg:["{s} threads about surprise overage charges are summarised as a reason to avoid {b}.",
+       "The model uses {s} to frame {b} as the expensive choice once SSO is priced in.",
+       "A 2024 price from {s} is presented as current, overstating {b}'s cost by about a third."]},
+ search:{
+  pos:["{s} is cited for {b}'s retrieval quality, and the answer names it the best-in-class option for large wikis.",
+       "The answer credits {b} with ranking by recency as well as relevance, sourcing the claim to {s}.",
+       "{s} benchmarks put {b} first and the recommendation follows that ordering."],
+  neu:["{s} explains how hybrid search works generally; {b} is one of four examples.",
+       "The answer notes per {s} that {b} indexes attachments, without evaluating the result.",
+       "{s} supplies a feature grid and {b} appears with a tick in the same columns as everyone else."],
+  neg:["{s} complaints that search 'never finds anything' are generalised into a verdict on {b}.",
+       "The model quotes {s} on stale indexes and steers the reader to a rival for large corpora.",
+       "An old {s} review of {b}'s search is treated as current despite the rewrite since."]},
+ integrations:{
+  pos:["{s} is cited for {b}'s two-way Slack sync and the answer opens with it.",
+       "The answer uses {s} to credit {b} with the broadest native integration list.",
+       "{s} is quoted on {b}'s webhook reliability and the recommendation rests on it."],
+  neu:["Integration options for {b} are listed from {s} docs.",
+       "{s} compares connector counts; {b} is one row of five.",
+       "The answer notes per {s} that {b} exposes a REST API, purely descriptively."],
+  neg:["{s} is used to argue {b}'s Jira integration is one-way, and the answer recommends elsewhere.",
+       "The model repeats a {s} thread about broken syncs as characteristic of {b}.",
+       "{b} is described as closed using a {s} post that predates its public API."]},
+ security:{
+  pos:["{s} is cited for {b}'s SOC 2 Type II and the answer treats compliance as settled.",
+       "The answer credits {b} with granular permissions, sourcing it to {s}.",
+       "{s} is quoted on {b}'s regional data residency and the recommendation follows."],
+  neu:["{s} lists which certifications {b} holds; the answer reproduces the list.",
+       "Access-control models are explained from {s} with {b} as one example.",
+       "The answer states {b} supports SAML per {s}, no evaluation attached."],
+  neg:["{s} is used to claim SSO is enterprise-only on {b}, framed as a hidden cost.",
+       "The model surfaces a {s} thread about an old incident and treats it as current posture.",
+       "A {s} page is cited to say {b} lacks audit logs, which the answer repeats unqualified."]},
+ migration:{
+  pos:["{s} is cited for {b}'s importer preserving page history, and the answer recommends it for migrations.",
+       "The answer uses {s} to say {b}'s Confluence import is the least painful of the options.",
+       "{s} is quoted on a successful 10k-page move to {b}."],
+  neu:["Import steps for {b} are lifted from {s} without evaluation.",
+       "{s} describes what typically breaks in any wiki migration; {b} is mentioned in passing.",
+       "The answer lists supported import formats for {b} per {s}."],
+  neg:["{s} posts about lost formatting are summarised as a warning about {b}'s importer.",
+       "The model repeats a {s} claim that {b} drops nested pages during import.",
+       "A {s} thread about a failed migration dominates the answer's view of {b}."]},
+ collab:{
+  pos:["{s} is cited for {b}'s review workflow and the answer recommends it for teams that need approvals.",
+       "The answer credits {b} with the cleanest concurrent editing, per {s}.",
+       "{s} is quoted on {b}'s comment threading as a reason to prefer it."],
+  neu:["{s} describes real-time editing generally; {b} is one example among several.",
+       "The answer notes {b} supports page templates per {s}.",
+       "{s} supplies a feature comparison and {b} matches the field."],
+  neg:["{s} is cited for a cluttered editor complaint and the answer calls {b} heavier than rivals.",
+       "The model repeats a {s} verdict that {b} 'gets messy past a few hundred pages'.",
+       "{b} and its older product are conflated using {s}, so the answer describes the wrong feature set."]},
+ support:{
+  pos:["{s} is cited for faster ticket turnaround and the answer treats {b}'s support as a strength.",
+       "The answer uses {s} to note {b} now offers a named CSM on business plans.",
+       "{s} is quoted on a resolved escalation and the answer uses it to reassure."],
+  neu:["The answer reproduces {b}'s stated SLA from {s}.",
+       "{s} outlines the escalation path for {b}, presented as steps.",
+       "Support channels for {b} are listed from {s}."],
+  neg:["{s} is the entire basis for a paragraph on unreachable support, presented as characteristic of {b}.",
+       "The model surfaces a low {s} rating for {b} without noting the sample is self-selecting.",
+       "A {s} thread about a week-long ticket is quoted at length."]},
+ ai:{
+  pos:["{s} is cited for {b}'s AI answers citing their sources, and the answer makes that the differentiator.",
+       "The answer credits {b} with grounding summaries in the workspace only, per {s}.",
+       "{s} is quoted saying {b}'s AI is the least prone to inventing policy."],
+  neu:["{s} explains retrieval-augmented answering; {b} is one implementation named.",
+       "The answer notes {b}'s AI features per {s} without ranking them.",
+       "{s} lists which models {b} uses, reproduced flatly."],
+  neg:["{s} is used to argue {b}'s AI summaries hallucinate internal policy, and the answer warns readers.",
+       "The model repeats a {s} complaint that {b}'s AI is a paid add-on dressed as a feature.",
+       "An early-access {s} review of {b}'s AI is presented as the current product."]}
+};
+const BANDS=[{id:"neg",name:"Negative"},{id:"neu",name:"Mixed / neutral"},{id:"pos",name:"Positive"}];
+const VERDICTS_L=[{id:"client wins",name:"We win"},{id:"client loses",name:"We lose"},
+  {id:"tie",name:"Tie"},{id:"not compared",name:"Not compared"}];
+const INFLUENCES=[{id:"owned",name:"Owned"},{id:"rented",name:"Rented"},
+  {id:"earned",name:"Earned"},{id:"ugc",name:"UGC"}];
+const FLAGS=[{id:"unsupported",name:"Page doesn\u2019t back it"},{id:"conflict",name:"Contradicts our facts"},
+  {id:"risk",name:"Risk flagged"},{id:"lost",name:"Lost head-to-head"}];
+const INF_OF={owned:"owned",review:"rented",editorial:"earned",reference:"earned",community:"ugc",video:"ugc"};
+let ANSWERS=[], VOL=[];
+
+/* ── index maps, rebuilt whenever a new dataset is adopted ─────────── */
+const S_BY_ID={},P_BY_ID={},T_BY_ID={},B_BY_ID={},Q_BY_ID={},ST_BY_ID={};
+let CLIENT="client", BRAND_CAT={}, MAXWEEK=12;
+function reindex(){
+  for(const m of [S_BY_ID,P_BY_ID,T_BY_ID,B_BY_ID,Q_BY_ID,ST_BY_ID]) for(const k in m) delete m[k];
+  SOURCES.forEach(s=>S_BY_ID[s.id]=s); PLATFORMS.forEach(p=>P_BY_ID[p.id]=p);
+  THEMES.forEach(t=>T_BY_ID[t.id]=t);  BRANDS.forEach(b=>B_BY_ID[b.id]=b);
+  PROMPTS.forEach(q=>Q_BY_ID[q.id]=q); STYPES.forEach(t=>ST_BY_ID[t.id]=t);
+  CLIENT=(BRANDS.find(b=>b.client)||BRANDS[0]||{id:"client"}).id;
+  BRAND_CAT={}; BRANDS.forEach((b,i)=>BRAND_CAT[b.id]=i<3?i:3);
+}
+reindex();
+
+const TONES={pos:["Endorsing","Enthusiastic","Recommending","Reassuring"],
+             neu:["Neutral-factual","Descriptive","Hedged","Comparative"],
+             neg:["Cautionary","Skeptical","Dismissive","Warning"]};
+const band=s=>s>=.22?"pos":s<=-.22?"neg":"neu";
+const VERDICT_POOL=["client wins","client loses","tie","not compared","not compared","not compared"];
+const RISK_POOL=["overstated guarantee","misstated price","misstated availability","misstated policy"];
+
+/* The built-in dataset. Fictional companies, fabricated numbers — it exists so
+   the tool has something to draw before you have run anything of your own. */
+let DEMO_ANSWERS=[], DEMO_VOL=[];
+function demoRecords(){
+  const out=[]; let rid=0, aid=0;
+  DEMO_ANSWERS=[]; DEMO_VOL=[];
+  const themeSrcAffinity={
+    pricing:{review:1.7,community:1.3,owned:1.1,editorial:1.0,reference:.7,video:.8},
+    search:{review:1.5,community:1.3,editorial:1.1,reference:1.0,owned:1.1,video:.9},
+    integrations:{reference:1.6,owned:1.3,review:1.2,community:1.1,editorial:.9,video:.7},
+    security:{owned:1.5,reference:1.4,editorial:1.1,review:1.1,community:.8,video:.5},
+    migration:{community:2.0,reference:1.3,owned:1.2,review:1.0,editorial:.8,video:1.0},
+    collab:{review:1.5,community:1.2,video:1.2,owned:1.0,editorial:1.0,reference:.8},
+    support:{community:2.2,review:1.4,owned:1.0,editorial:.8,reference:.6,video:.6},
+    ai:{editorial:1.6,video:1.3,review:1.2,community:1.1,owned:1.2,reference:.8},
+  };
+  const REPEATS=3;
+  for(const pl of PLATFORMS){
+    for(const q of PROMPTS){
+      const th=T_BY_ID[q.theme];
+      const weeks=[]; while(weeks.length<4){const w=1+Math.floor(RNG()*12); if(!weeks.includes(w))weeks.push(w)}
+      weeks.sort((a,b)=>a-b);
+      const brandLed=/northwind/i.test(q.text);
+      /* Baseline odds of being named at all — the thing the old model could not see. */
+      const basePresence=clamp((brandLed?.93:.42)+th.tilt*.18+pl.mood*.5,.05,.97);
+      for(const wk of weeks){
+        for(let rep=0;rep<REPEATS;rep++){
+          aid++;
+          const aidStr="a"+aid;
+          const mentioned=RNG()<basePresence;
+          const n=pl.cites[0]+Math.floor(RNG()*(pl.cites[1]-pl.cites[0]+1));
+          const pool=SOURCES.map(x=>({s:x,w:x.w*(pl.bias[x.type]||1)*(themeSrcAffinity[q.theme][x.type]||1)}));
+          const chosen=[]; const used={};
+          for(let i=0;i<n;i++){
+            const avail=pool.filter(x=>!used[x.s.id]); if(!avail.length)break;
+            const src=wpick(avail).s; used[src.id]=1; chosen.push(src);
+          }
+          const order=BRANDS.filter(b=>b.id!=="none").slice().sort(()=>RNG()-.5);
+          const present=[]; 
+          if(mentioned) present.push("client");
+          order.forEach(b=>{ if(b.id!=="client"&&RNG()<.42) present.push(b.id) });
+          const first=present.length?present[Math.floor(RNG()*Math.min(2,present.length))]:null;
+          DEMO_ANSWERS.push({ aid:aidStr, platform:pl.id, prompt:q.id, theme:q.theme, intent:q.intent,
+            week:wk, repeat:rep, refused:false, mentioned,
+            recommended: mentioned && first==="client" && RNG()<.55,
+            first, brands:present.map((b,i)=>({brand:b,order:i+1,recommended:i===0&&RNG()<.5,
+              share:Math.max(4,Math.round(60/(i+1)*(.6+RNG()*.8)))})),
+            cites:chosen.length, sources:chosen.map(x=>x.id) });
+
+          chosen.forEach((src,idx)=>{
+            let brand;
+            if(mentioned && RNG()<(brandLed?.7:.42)) brand=B_BY_ID.client;
+            else brand=B_BY_ID[wpick(BRANDS.map(b=>({...b,w:b.w}))).id];
+            const ownedMatch=src.type==="owned"&&((src.id==="northwind"&&brand.id!=="client")||(src.id==="contoso"&&brand.id!=="comp0"));
+            const drift=(q.theme==="pricing"?(wk-6.5)*.016:0)+(src.id==="reddit"?-(wk-6.5)*.012:0);
+            let sent=th.tilt*.60 + src.tilt*.50 + brand.tilt*.34 + pl.mood
+                   + (idx===0?.07:idx>3?-.05:0) + drift
+                   + (RNG()*2-1)*pl.spread*.72 + (ownedMatch?-.25:0);
+            sent=clamp(Math.round(sent*100)/100,-1,1);
+            const bd=band(sent);
+            const tmpl=pick(SNIP[q.theme][bd]);
+            const nuance=[];
+            if(idx===0) nuance.push("first citation");
+            if(idx>=4) nuance.push("buried citation");
+            if(src.type==="community") nuance.push("anecdote as evidence");
+            if(src.type==="owned"&&brand.id==="client") nuance.push("own-domain echo");
+            if(bd==="neg"&&src.type!=="community") nuance.push("negative from authority");
+            if(/2024|stale|old |predates|early-access/i.test(tmpl)) nuance.push("stale data");
+            if(/conflat/i.test(tmpl)) nuance.push("brand confusion");
+            if(brand.id!=="client"&&bd==="pos") nuance.push("competitor favoured");
+            const support = RNG()<.34 ? (RNG()<.78?"supported":RNG()<.7?"unsupported":"unreachable") : "unchecked";
+            out.push({
+              id:"r"+(rid++), aid:aidStr, platform:pl.id, prompt:q.id, theme:q.theme,
+              intent:q.intent, source:src.id, stype:src.type,
+              influence:INF_OF[src.type]||"earned",
+              brand:brand.id, sent, bandId:bd, rank:idx+1, week:wk, auth:src.auth,
+              verdict: RNG()<.36 ? pick(VERDICT_POOL) : "not compared",
+              tone:pick(TONES[bd]),
+              claim:`${src.dom} on ${brand.name}`,
+              text:tmpl.replace(/\{b\}/g,brand.name).replace(/\{s\}/g,src.dom),
+              nuance:nuance.slice(0,3),
+              risks: RNG()<.05 ? [pick(RISK_POOL)] : [],
+              factConflict: RNG()<.04 ? "Free plan includes 3 seats, not 5." : null,
+              support, supportNote: support==="unsupported" ? "The page does not make this claim." : null,
+            });
+          });
+        }
+      }
+    }
+  }
+  /* volatility across the repeats we just generated */
+  const grp=new Map();
+  for(const a of DEMO_ANSWERS){
+    const k=a.prompt+"|"+a.platform;
+    if(!grp.has(k)) grp.set(k,[]);
+    grp.get(k).push(a);
+  }
+  for(const [k,list] of grp){
+    const [prompt,platform]=k.split("|");
+    const appear=list.filter(a=>a.mentioned).length/list.length;
+    const firsts=new Set(list.map(a=>a.first));
+    const jac=[];
+    for(let i=0;i<list.length;i++) for(let j=i+1;j<list.length;j++){
+      const A=new Set(list[i].sources), B=new Set(list[j].sources);
+      const inter=[...A].filter(x=>B.has(x)).length, uni=new Set([...A,...B]).size;
+      if(uni) jac.push(inter/uni);
+    }
+    DEMO_VOL.push({ prompt, platform, runs:list.length, appearRate:Math.round(appear*100)/100,
+      flipped: appear>0&&appear<1, firstBrandChurn: firsts.size>1,
+      sourceOverlap: jac.length?Math.round(jac.reduce((x,y)=>x+y,0)/jac.length*100)/100:1 });
+  }
+  return out;
+}
+let RECORDS=demoRecords();
+ANSWERS=DEMO_ANSWERS; VOL=DEMO_VOL;
+
+/* ══════════════════════════════════════════════════════════════════════
+   2 · STATE + SCOPE
+   ══════════════════════════════════════════════════════════════════════ */
+const allIds=a=>new Set(a.map(x=>x.id));
+const STATE={
+  view:"coverage",
+  f:{platform:allIds(PLATFORMS),stype:allIds(STYPES),source:allIds(SOURCES),
+     band:allIds(BANDS),theme:allIds(THEMES),brand:allIds(BRANDS),intent:allIds(INTENTS),
+     verdict:allIds(VERDICTS_L),influence:allIds(INFLUENCES)},
+  flags:new Set(),
+  coverage:{rows:"platform",cols:"theme"},
+  wk:[1,12],
+  colorby:"sentiment", sizeby:"citations",
+  axes:{x:"sent",y:"cites",z:"auth"},
+  matrix:{rows:"platform",cols:"theme",h:"citations"},
+  sel:null, hover:null, srcQuery:"", auto:true
+};
+const infOf=r=>r.influence||INF_OF[r.stype]||"earned";
+function hasFlag(r,f){
+  if(f==="unsupported") return r.support==="unsupported";
+  if(f==="conflict")    return !!r.factConflict;
+  if(f==="risk")        return !!(r.risks&&r.risks.length);
+  if(f==="lost")        return r.verdict==="client loses";
+  return true;
+}
+function inScope(r){
+  const f=STATE.f;
+  if(!(f.platform.has(r.platform)&&f.stype.has(r.stype)&&f.source.has(r.source)
+      &&f.band.has(r.bandId)&&f.theme.has(r.theme)&&f.brand.has(r.brand)&&f.intent.has(r.intent)
+      &&r.week>=STATE.wk[0]&&r.week<=STATE.wk[1])) return false;
+  if(f.verdict && !f.verdict.has(r.verdict||"not compared")) return false;
+  if(f.influence && !f.influence.has(infOf(r))) return false;
+  for(const fl of STATE.flags) if(!hasFlag(r,fl)) return false;
+  return true;
+}
+/* Answers carry no source, so only the dims that exist on them apply. */
+function answerInScope(a){
+  const f=STATE.f;
+  return f.platform.has(a.platform)&&f.theme.has(a.theme)&&f.intent.has(a.intent)
+      &&a.week>=STATE.wk[0]&&a.week<=STATE.wk[1];
+}
+let SCOPE=[], ASCOPE=[];
+function rescope(){ SCOPE=RECORDS.filter(inScope); ASCOPE=ANSWERS.filter(answerInScope); SCOPE_V++; _ac.clear(); }
+
+const DIM={
+  platform:{list:PLATFORMS,key:r=>r.platform,label:"AI platform"},
+  source:  {list:SOURCES,  key:r=>r.source,  label:"Source",   name:s=>s.dom},
+  stype:   {list:STYPES,   key:r=>r.stype,   label:"Source type"},
+  theme:   {list:THEMES,   key:r=>r.theme,   label:"Topic"},
+  brand:   {list:BRANDS,   key:r=>r.brand,   label:"Wallet"},
+  intent:  {list:INTENTS,  key:r=>r.intent,  label:"Query intent"},
+  prompt:  {list:PROMPTS,  key:r=>r.prompt,  label:"Query", name:q=>q.text},
+};
+const dimName=(d,id)=>{const m=DIM[d];const it=m.list.find(x=>x.id===id);if(!it)return id;return m.name?m.name(it):it.name};
+function agg(recs,dim){
+  const key=DIM[dim].key, m=new Map();
+  for(const r of recs){
+    const k=key(r); let o=m.get(k);
+    if(!o){o={id:k,n:0,sum:0,answers:new Set(),sources:new Set(),recs:[],pp:0,best:9};m.set(k,o)}
+    o.n++; o.sum+=r.sent; o.answers.add(r.aid); o.sources.add(r.source); o.recs.push(r);
+    if(r.brand===CLIENT)o.pp++; if(r.rank<o.best)o.best=r.rank;
+  }
+  for(const o of m.values()){o.sent=o.n?o.sum/o.n:0; o.a=o.answers.size; o.s=o.sources.size}
+  return m;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   3 · COLOUR — hue has exactly one job: sentiment.
+   Categorical modes cap at three validated hues + a neutral "other",
+   and always ship a text label, so colour is never the only channel.
+   ══════════════════════════════════════════════════════════════════════ */
+const hex2rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const MIDC=hex2rgb("#67718c"), POSC=hex2rgb("#4d9cff"), NEGC=hex2rgb("#ff6b6b");
+const SENT_GAIN=0.4;
+function sentRGB(s){
+  const t=Math.min(1,Math.abs(s)/SENT_GAIN), p=s>=0?POSC:NEGC;
+  return [Math.round(MIDC[0]+(p[0]-MIDC[0])*t),Math.round(MIDC[1]+(p[1]-MIDC[1])*t),Math.round(MIDC[2]+(p[2]-MIDC[2])*t)];
+}
+const rgba=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const sentCSS=(s,a=1)=>rgba(sentRGB(s),a);
+const CAT=[hex2rgb("#3987e5"),hex2rgb("#d95926"),hex2rgb("#199e70")], OTHER=hex2rgb("#6b7688");
+const catRGB=i=>i<3?CAT[i]:OTHER;
+const STYPE_CAT={community:0,editorial:1,review:2,owned:3,reference:3,video:3};
+function markRGB(o){
+  switch(STATE.colorby){
+    case "sentiment": return sentRGB(o.sent??0);
+    case "stype":     return catRGB(STYPE_CAT[o.stype??"owned"]??3);
+    case "brand":     return catRGB(BRAND_CAT[o.brandTop??"venmo"]??3);
+    default:          return hex2rgb("#7f93b8");
+  }
+}
+const sentWord=s=>s>=.45?"Strongly positive":s>=.22?"Positive":s>=-.22?"Mixed / neutral":s>=-.45?"Negative":"Strongly negative";
+const sentGlyph=s=>s>=.22?"▲":s<=-.22?"▼":"●";
+const fmt=n=>n>=1000?(n/1000).toFixed(1)+"k":String(n);
+const sgn=n=>(n>=0?"+":"")+n.toFixed(2);
+
+/* ══════════════════════════════════════════════════════════════════════
+   4 · 3D ENGINE — projector, orbit camera, painter's-algorithm renderer
+   ══════════════════════════════════════════════════════════════════════ */
+const cvs=document.getElementById("scene"), ctx=cvs.getContext("2d");
+const REDUCED=matchMedia("(prefers-reduced-motion:reduce)").matches;
+let W=1,H=1,CX=0,CY=0,DPR=1;
+function resize(){
+  DPR=Math.min(2,devicePixelRatio||1);
+  const r=cvs.getBoundingClientRect();
+  W=Math.max(1,r.width); H=Math.max(1,r.height);
+  cvs.width=Math.round(W*DPR); cvs.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0); recentre();
+}
+function recentre(){
+  const l=document.getElementById("rail-l"), r=document.getElementById("rail-r");
+  const a=(l&&!l.classList.contains("hidden"))?290:8;
+  const b=W-((r&&!r.classList.contains("hidden"))?346:8);
+  CX=(a+b)/2; CY=H/2-14;
+  const usable=Math.max(360,b-a);
+  cam.fov=clamp(1150*(usable/1040)*clamp(H/940,.9,1.08),620,1320);
+}
+const cam={yaw:.72,pitch:.30,dist:1050,fov:1150,tx:0,ty:0,tz:0,
+           gyaw:.72,gpitch:.30,gdist:1050,gty:0};
+function rot(x,y,z){
+  const cy=Math.cos(cam.yaw),sy=Math.sin(cam.yaw);
+  const x1=x*cy-z*sy, z1=x*sy+z*cy;
+  const cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch);
+  return [x1, y*cp-z1*sp, y*sp+z1*cp];
+}
+function project(p){
+  const r=rot(p[0]-cam.tx,p[1]-cam.ty,p[2]-cam.tz);
+  const zc=r[2]+cam.dist;
+  if(zc<40) return null;
+  const s=cam.fov/zc;
+  return {x:CX+r[0]*s, y:CY-r[1]*s, s, z:zc};
+}
+let SCENE={points:[],edges:[],boxes:[],polys:[],texts:[],rings:[]};
+const STARS=Array.from({length:300},()=>{
+  const u=RNG()*2-1,th=RNG()*Math.PI*2,r=Math.sqrt(1-u*u);
+  return [r*Math.cos(th),u,r*Math.sin(th),.15+RNG()*.55];
+});
+function drawStars(){
+  const k=Math.max(W,H)*.92;
+  for(const s of STARS){
+    const r=rot(s[0],s[1],s[2]);
+    if(r[2]>.15) continue;
+    const x=CX+r[0]*k, y=CY-r[1]*k;
+    if(x<-4||x>W+4||y<-4||y>H+4) continue;
+    ctx.fillStyle=`rgba(150,176,220,${s[3]*.5})`;
+    ctx.fillRect(x,y,1.1,1.1);
+  }
+}
+let HITS=[];
+function glyphPath(g,x,y,r){
+  ctx.beginPath();
+  if(g==="hex"){for(let i=0;i<6;i++){const a=Math.PI/6+i*Math.PI/3;const px=x+Math.cos(a)*r,py=y+Math.sin(a)*r;i?ctx.lineTo(px,py):ctx.moveTo(px,py)}ctx.closePath()}
+  else if(g==="diamond"){ctx.moveTo(x,y-r);ctx.lineTo(x+r*.8,y);ctx.lineTo(x,y+r);ctx.lineTo(x-r*.8,y);ctx.closePath()}
+  else if(g==="square"){ctx.rect(x-r*.8,y-r*.8,r*1.6,r*1.6)}
+  else ctx.arc(x,y,r,0,6.2832);
+}
+const LABEL_GRID=new Map();
+function labelFree(x,y,w){
+  const gx=Math.floor(x/56),gy=Math.floor(y/15);
+  for(let i=0;i<=Math.ceil(w/56);i++){const k=(gx+i)+"_"+gy; if(LABEL_GRID.has(k))return false}
+  for(let i=0;i<=Math.ceil(w/56);i++)LABEL_GRID.set((gx+i)+"_"+gy,1);
+  return true;
+}
+function render(){
+  ctx.clearRect(0,0,W,H);
+  const g=ctx.createRadialGradient(CX,CY*.85,0,CX,CY,Math.max(W,H)*.78);
+  g.addColorStop(0,"#0d1526"); g.addColorStop(.55,"#0a0f1d"); g.addColorStop(1,"#05080f");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  drawStars();
+  HITS=[]; LABEL_GRID.clear();
+  const D=[];
+  for(const e of SCENE.edges){
+    const a=project(e.a),b=project(e.b); if(!a||!b)continue;
+    D.push({z:(a.z+b.z)/2+2000,t:"e",a,b,o:e});
+  }
+  for(const p of SCENE.polys){
+    const pts=p.pts.map(project); if(pts.some(v=>!v))continue;
+    D.push({z:pts.reduce((s,v)=>s+v.z,0)/pts.length+(p.back?4000:1500),t:"p",pts,o:p});
+  }
+  for(const b of SCENE.boxes){
+    const c=project(b.p); if(!c)continue;
+    D.push({z:c.z,t:"b",o:b});
+  }
+  for(const pt of SCENE.points){
+    const v=project(pt.p); if(!v)continue;
+    D.push({z:v.z,t:"n",v,o:pt});
+  }
+  for(const t of SCENE.texts){
+    if(!t.depth) continue;
+    const v=project(t.p); if(!v)continue;
+    D.push({z:v.z-.5,t:"t",v,o:t});
+  }
+  D.sort((a,b)=>b.z-a.z);
+  for(const d of D){
+    if(d.t==="e") drawEdge(d);
+    else if(d.t==="p") drawPoly(d);
+    else if(d.t==="b") drawBox(d.o);
+    else if(d.t==="t") drawText(d);
+    else drawNode(d);
+  }
+  for(const t of SCENE.texts){
+    if(t.depth) continue;
+    const v=project(t.p); if(!v)continue;
+    drawText({v,o:t});
+  }
+}
+function drawEdge(d){
+  const o=d.o, dim=o.dim?.28:1;
+  if(o.alpha*dim<.2) ctx.globalCompositeOperation="lighter";
+  ctx.strokeStyle=rgba(o.color,o.alpha*dim);
+  ctx.lineWidth=Math.max(.4,o.width*Math.min(1.6,(d.a.s+d.b.s)/2*1.4));
+  ctx.beginPath(); ctx.moveTo(d.a.x,d.a.y);
+  if(o.bend){
+    const mx=(d.a.x+d.b.x)/2, my=(d.a.y+d.b.y)/2-o.bend;
+    ctx.quadraticCurveTo(mx,my,d.b.x,d.b.y);
+  } else ctx.lineTo(d.b.x,d.b.y);
+  ctx.stroke();
+  ctx.globalCompositeOperation="source-over";
+}
+function drawPoly(d){
+  const o=d.o;
+  ctx.beginPath();
+  d.pts.forEach((v,i)=>i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y));
+  if(o.closed)ctx.closePath();
+  if(o.fill){ctx.fillStyle=rgba(o.color,o.fillAlpha??.1);ctx.fill()}
+  if(o.width!==0){ctx.strokeStyle=rgba(o.color,o.alpha??.35);ctx.lineWidth=o.width||1;ctx.stroke()}
+}
+function drawBox(b){
+  const hw=b.w/2, hd=b.d/2, x=b.p[0], y=b.p[1], z=b.p[2], h=Math.max(.6,b.h);
+  const c=[[x-hw,y,z-hd],[x+hw,y,z-hd],[x+hw,y,z+hd],[x-hw,y,z+hd],
+           [x-hw,y+h,z-hd],[x+hw,y+h,z-hd],[x+hw,y+h,z+hd],[x-hw,y+h,z+hd]].map(project);
+  if(c.some(v=>!v))return;
+  if(b.wire){
+    ctx.strokeStyle=`rgba(${b.color[0]},${b.color[1]},${b.color[2]},${(b.alpha??.30)*(b.dim?.3:1)})`;
+    ctx.lineWidth=.9;
+    for(const [i,j] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]){
+      ctx.beginPath(); ctx.moveTo(c[i].x,c[i].y); ctx.lineTo(c[j].x,c[j].y); ctx.stroke();
+    }
+    const top=project([x,y+h,z]);
+    if(top&&b.node) HITS.push({x:top.x,y:top.y,r:Math.max(12,b.w*top.s*.5),node:b.node});
+    return;
+  }
+  const faces=[[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7],[4,5,6,7]];
+  const shade=[.55,.78,.55,.36,1.0];
+  const order=faces.map((f,i)=>({f,i,z:f.reduce((s,k)=>s+c[k].z,0)/4})).sort((a,b)=>b.z-a.z);
+  const dimf=b.dim?.30:1;
+  for(const {f,i} of order){
+    ctx.beginPath(); f.forEach((k,j)=>j?ctx.lineTo(c[k].x,c[k].y):ctx.moveTo(c[k].x,c[k].y)); ctx.closePath();
+    const s=shade[i]*dimf;
+    ctx.fillStyle=`rgba(${Math.round(b.color[0]*s)},${Math.round(b.color[1]*s)},${Math.round(b.color[2]*s)},${b.alpha??.92})`;
+    ctx.fill();
+    ctx.strokeStyle=`rgba(6,10,20,${.55*dimf})`; ctx.lineWidth=.7; ctx.stroke();
+  }
+  const top=project([x,y+h,z]);
+  if(top&&b.node){HITS.push({x:top.x,y:top.y,r:Math.max(10,b.w*top.s*.5),node:b.node})}
+  if(top&&b.label&&b.h>0){
+    ctx.font="500 10px "+MONO; ctx.textAlign="center";
+    ctx.fillStyle="rgba(210,222,242,"+(b.dim?.3:.85)+")";
+    ctx.fillText(b.label,top.x,top.y-6);
+  }
+}
+const MONO='"IBM Plex Mono",monospace', SANS='Archivo,sans-serif';
+function drawNode(d){
+  const o=d.o, v=d.v;
+  const r=Math.max(1.1,o.r*v.s);
+  const dim=o.dim?.28:1;
+  const isSel=o.node&&STATE.sel&&STATE.sel.kind===o.node.kind&&STATE.sel.id===o.node.id;
+  const isHov=o.node&&STATE.hover&&STATE.hover.kind===o.node.kind&&STATE.hover.id===o.node.id;
+  if(r>1.6&&!o.dim){
+    const gr=ctx.createRadialGradient(v.x,v.y,0,v.x,v.y,r*3.4);
+    gr.addColorStop(0,rgba(o.color,.34)); gr.addColorStop(1,rgba(o.color,0));
+    ctx.globalCompositeOperation="lighter"; ctx.fillStyle=gr;
+    ctx.beginPath(); ctx.arc(v.x,v.y,r*3.4,0,6.2832); ctx.fill();
+    ctx.globalCompositeOperation="source-over";
+  }
+  glyphPath(o.glyph||"dot",v.x,v.y,r);
+  ctx.fillStyle=rgba(o.color,(o.alpha??.95)*dim); ctx.fill();
+  ctx.lineWidth=1; ctx.strokeStyle="rgba(7,11,22,.85)"; ctx.stroke();
+  if(isSel||isHov){
+    ctx.beginPath(); ctx.arc(v.x,v.y,r+5,0,6.2832);
+    ctx.strokeStyle=isSel?"#ffffff":"rgba(255,255,255,.55)"; ctx.lineWidth=isSel?1.6:1; ctx.stroke();
+  }
+  if(o.node) HITS.push({x:v.x,y:v.y,r:Math.max(9,r+5),node:o.node});
+  if(o.label&&(o.labelAlways||isSel||isHov||r>11)){
+    const size=o.labelSize||10.5;
+    ctx.font=(o.labelMono?"500 ":"500 ")+size+"px "+(o.labelMono?MONO:SANS);
+    const w=ctx.measureText(o.label).width;
+    if(o.labelAlways||isSel||isHov||labelFree(v.x-w/2,v.y-r-11,w)){
+      ctx.textAlign="center";
+      ctx.fillStyle="rgba(6,10,20,.7)";
+      ctx.fillRect(v.x-w/2-3,v.y-r-11-size*.8,w+6,size+3);
+      ctx.fillStyle=isSel?"#ffffff":o.labelDim?"rgba(154,168,196,.9)":"rgba(226,234,248,.94)";
+      ctx.fillText(o.label,v.x,v.y-r-11+size*.2);
+    }
+  }
+}
+function drawText(d){
+  const o=d.o,v=d.v;
+  ctx.font=(o.weight||"500")+" "+(o.size||10)+"px "+(o.mono===false?SANS:MONO);
+  ctx.textAlign=o.align||"center";
+  ctx.fillStyle=o.color||"rgba(154,168,196,.8)";
+  ctx.fillText(o.text,v.x+(o.dx||0),v.y+(o.dy||0));
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   5 · VIEWS — five ways into the same citation table
+   ══════════════════════════════════════════════════════════════════════ */
+const VIEWS=[
+ {id:"coverage",    name:"Coverage",     hint:"The empty wireframe is every answer you could have been in. The solid block is how often you actually were. Hollow columns are the whole point."},
+ {id:"constellation",name:"Constellation",hint:"Platform → query → source. Every thread is a citation; thread colour is what the answer <b>said</b>, not just that it linked."},
+ {id:"orbits",       name:"Orbits",       hint:"One system per AI platform. Ring distance = how early the source is cited; planet size = citation volume."},
+ {id:"space",        name:"Sentiment space",hint:"Free axes. Park sources where sentiment meets volume meets authority, then look for the outliers."},
+ {id:"landscape",    name:"Landscape",    hint:"A 3D crosstab. Bar height is volume, bar colour is tone — the tall red columns are where you are losing."},
+ {id:"helix",        name:"Timeline helix",hint:"Weeks wound into a spiral, one strand per platform. Watch colour drift, not height."},
+];
+const METRICS={
+  sent:{name:"Avg sentiment",get:o=>o.sent,fmt:v=>sgn(v),min:-1,max:1},
+  cites:{name:"Citation volume",get:o=>o.n,fmt:v=>String(Math.round(v))},
+  answers:{name:"Answers appeared in",get:o=>o.a,fmt:v=>String(Math.round(v))},
+  auth:{name:"Source authority",get:o=>o.auth??.5,fmt:v=>v.toFixed(2),min:0,max:1},
+  rank:{name:"Answer prominence",get:o=>o.prom,fmt:v=>v.toFixed(2),min:0,max:1},
+  ppshare:{name:"Client share of mentions",get:o=>o.n?o.pp/o.n:0,fmt:v=>Math.round(v*100)+"%",min:0,max:1},
+  spread:{name:"Sentiment spread",get:o=>o.spread,fmt:v=>v.toFixed(2),min:0,max:1},
+};
+function enrich(o,dim){
+  const src=dim==="source"?S_BY_ID[o.id]:null;
+  o.auth=src?src.auth:o.recs.reduce((s,r)=>s+r.auth,0)/Math.max(1,o.n);
+  o.prom=1-(o.recs.reduce((s,r)=>s+Math.min(6,r.rank),0)/Math.max(1,o.n)-1)/5;
+  const m=o.sent; o.spread=Math.sqrt(o.recs.reduce((s,r)=>s+(r.sent-m)**2,0)/Math.max(1,o.n));
+  o.stype=src?src.type:(o.recs[0]&&o.recs[0].stype);
+  const bc={}; o.recs.forEach(r=>bc[r.brand]=(bc[r.brand]||0)+1);
+  o.brandTop=Object.keys(bc).sort((a,b)=>bc[b]-bc[a])[0];
+  return o;
+}
+const TAU=Math.PI*2, GOLD=2.39996;
+let CLOCK=0;
+
+function buildScene(){
+  SCENE={points:[],edges:[],boxes:[],polys:[],texts:[]};
+  const b={constellation:vConstellation,orbits:vOrbits,space:vSpace,landscape:vLandscape,helix:vHelix,coverage:vCoverage}[STATE.view];
+  b();
+}
+const selMatch=(kind,id)=>!STATE.sel||(STATE.sel.kind===kind&&STATE.sel.id===id);
+function isDim(kind,id){
+  if(!STATE.sel) return false;
+  if(STATE.sel.kind===kind&&STATE.sel.id===id) return false;
+  return !STATE.linked||!STATE.linked.has(kind+":"+id);
+}
+
+/* ── 5.1 Constellation ─────────────────────────────────────────────
+   Three shells: platforms inside, the queries they answered in the
+   middle, the sources they leaned on outside. A thread is drawn for
+   every platform→query and query→source pair; thread colour is the
+   average tone of what was said, so a bright red bundle is a source
+   feeding a model a bad story, not merely a link.                    */
+function vConstellation(){
+  const P=aggS("platform"), Q=aggS("prompt"), S=aggS("source");
+  const plats=PLATFORMS.filter(p=>P.has(p.id));
+  if(!plats.length) return;
+  const themeIdx={}; THEMES.forEach((t,i)=>themeIdx[t.id]=i);
+  const typeIdx={};  STYPES.forEach((t,i)=>typeIdx[t.id]=i);
+  const pos={};
+  plats.forEach((p,i)=>{
+    const a=i/plats.length*TAU+.25;
+    pos["platform:"+p.id]=[Math.cos(a)*335,((i%3)-1)*118,Math.sin(a)*335];
+  });
+  const qList=PROMPTS.filter(q=>Q.has(q.id));
+  const perTheme={}; qList.forEach(q=>{(perTheme[q.theme]=perTheme[q.theme]||[]).push(q)});
+  Object.keys(perTheme).forEach(th=>{
+    const arr=perTheme[th], sector=TAU/THEMES.length, base=themeIdx[th]*sector+sector*.5;
+    arr.forEach((q,i)=>{
+      const a=base+((i%3)-1)*sector*.24;
+      const lat=(-.8+(i+.5)/arr.length*1.6)*.85, R=580;
+      const r=Math.cos(lat)*R;
+      pos["prompt:"+q.id]=[Math.cos(a)*r,Math.sin(lat)*R*.80,Math.sin(a)*r];
+    });
+  });
+  const sList=SOURCES.filter(s=>S.has(s.id));
+  const perType={}; sList.forEach(s=>{(perType[s.type]=perType[s.type]||[]).push(s)});
+  Object.keys(perType).forEach(ty=>{
+    const arr=perType[ty], sector=TAU/STYPES.length, base=typeIdx[ty]*sector+sector*.5;
+    arr.forEach((s,i)=>{
+      const a=base+((i%2)?.11:-.11)-.02*i;
+      const lat=(-.78+(i+.5)/arr.length*1.56)*.95, R=980;
+      const r=Math.cos(lat)*R;
+      pos["source:"+s.id]=[Math.cos(a)*r,Math.sin(lat)*R*.62,Math.sin(a)*r];
+    });
+  });
+  const bob=k=>{const q=pos[k];if(!q)return null;const t=CLOCK*.32+q[0]*.004+q[2]*.003;return [q[0],q[1]+Math.sin(t)*6,q[2]]};
+
+  const e1=memoScope("e1",()=>{const m=new Map();
+    for(const r of SCOPE){const k=r.platform+"|"+r.prompt; let a=m.get(k);
+      if(!a){a={n:0,s:0,p:r.platform,q:r.prompt};m.set(k,a)} a.n++;a.s+=r.sent}
+    return [...m.values()].sort((x,y)=>y.n-x.n)});
+  const e2=memoScope("e2",()=>{const m=new Map();
+    for(const r of SCOPE){const k=r.prompt+"|"+r.source; let a=m.get(k);
+      if(!a){a={n:0,s:0,q:r.prompt,src:r.source};m.set(k,a)} a.n++;a.s+=r.sent}
+    return [...m.values()].sort((x,y)=>y.n-x.n)});
+  const focused=!!STATE.sel;
+  const lit=(kind,id)=>!focused||!isDim(kind,id);
+  const cap=focused?4000:340;
+  const push=(A,B,n,sent,dim)=>{
+    if(!A||!B)return;
+    SCENE.edges.push({a:A,b:B,color:STATE.colorby==="sentiment"?sentRGB(sent):[110,132,178],
+      alpha:Math.min(.20,.035+n*.022)*(focused?1.5:1),width:Math.min(1.8,.4+n*.18),dim});
+  };
+  let drawn=0;
+  for(const a of e1){
+    const on=lit("platform",a.p)&&lit("prompt",a.q);
+    if(focused&&!on)continue;
+    if(!focused&&drawn++>cap)break;
+    push(bob("platform:"+a.p),bob("prompt:"+a.q),a.n,a.s/a.n,!on);
+  }
+  drawn=0;
+  for(const a of e2){
+    const on=lit("prompt",a.q)&&lit("source",a.src);
+    if(focused&&!on)continue;
+    if(!focused&&drawn++>cap)break;
+    push(bob("prompt:"+a.q),bob("source:"+a.src),a.n,a.s/a.n,!on);
+  }
+  const maxQ=Math.max(1,...[...Q.values()].map(o=>o.n)), maxS=Math.max(1,...[...S.values()].map(o=>o.n));
+  plats.forEach(p=>{
+    const o=enrich(P.get(p.id),"platform");
+    SCENE.points.push({p:bob("platform:"+p.id),r:14,glyph:"hex",color:markRGB(o),alpha:.98,
+      label:p.name,labelAlways:lit("platform",p.id),labelSize:11.5,
+      dim:isDim("platform",p.id),node:{kind:"platform",id:p.id}});
+  });
+  qList.forEach(q=>{
+    const o=enrich(Q.get(q.id),"prompt");
+    SCENE.points.push({p:bob("prompt:"+q.id),r:3+Math.sqrt(sizeMetric(o,maxQ))*6,glyph:"diamond",color:markRGB(o),alpha:.92,
+      label:q.text.length>38?q.text.slice(0,36)+"…":q.text,labelSize:9.5,labelDim:true,labelMono:false,
+      dim:isDim("prompt",q.id),node:{kind:"prompt",id:q.id}});
+  });
+  sList.forEach(s=>{
+    const o=enrich(S.get(s.id),"source");
+    SCENE.points.push({p:bob("source:"+s.id),r:4+Math.sqrt(sizeMetric(o,maxS))*11,glyph:"dot",color:markRGB(o),alpha:.96,
+      label:s.dom,labelAlways:o.n/maxS>.5&&lit("source",s.id),labelSize:10,labelMono:true,
+      dim:isDim("source",s.id),node:{kind:"source",id:s.id}});
+  });
+  [[580,.16],[980,.13]].forEach(([R,al])=>{
+    const pts=[]; for(let k=0;k<=72;k++){const th=k/72*TAU;pts.push([Math.cos(th)*R,0,Math.sin(th)*R])}
+    SCENE.polys.push({pts,color:[74,92,130],alpha:al,width:.8,closed:true,back:true});
+  });
+  SCENE.texts.push({p:[0,-760,0],text:"INNER · AI PLATFORMS      MIDDLE · QUERIES, GROUPED BY TOPIC      OUTER · SOURCES, GROUPED BY TYPE",size:9.5,color:"rgba(106,119,148,.8)"});
+  if(!focused) SCENE.texts.push({p:[0,-800,0],text:"SHOWING THE "+cap+" HEAVIEST THREADS · CLICK ANY NODE FOR ITS FULL SET",size:8.5,color:"rgba(86,98,124,.8)"});
+}
+
+/* ── 5.2 Orbits ────────────────────────────────────────────────────── */
+function vOrbits(){
+  const plats=PLATFORMS.filter(p=>SCOPE.some(r=>r.platform===p.id));
+  if(!plats.length)return;
+  const n=plats.length;
+  const R=n<=1?0:n<=2?470:n<=4?560:625;
+  plats.forEach((p,i)=>{
+    const a=i/n*TAU;
+    const cx=Math.cos(a)*R, cz=Math.sin(a)*R, cy=((i%2)?1:-1)*60;
+    const recs=memoScope("pl:"+p.id,()=>SCOPE.filter(r=>r.platform===p.id));
+    const S=memoScope("plsrc:"+p.id,()=>agg(recs,"source"));
+    const list=[...S.values()].map(o=>enrich(o,"source")).sort((x,y)=>y.n-x.n).slice(0,12);
+    const po=enrich(agg(recs,"platform").get(p.id),"platform");
+    const maxN=Math.max(1,...list.map(o=>o.n));
+    SCENE.points.push({p:[cx,cy,cz],r:15,glyph:"hex",color:markRGB(po),alpha:.98,
+      label:p.name,labelAlways:true,labelSize:12,dim:isDim("platform",p.id),node:{kind:"platform",id:p.id}});
+    SCENE.texts.push({p:[cx,cy-78,cz],text:po.n+" CITES · TONE "+sgn(po.sent),size:9,color:"rgba(122,138,170,.95)",depth:true});
+    list.forEach((o,j)=>{
+      const rr=70+(1-o.prom)*34+j*13;
+      const tilt=.30+(j%3)*.09;
+      const pts=[];
+      for(let k=0;k<=48;k++){
+        const th=k/48*TAU;
+        pts.push([cx+Math.cos(th)*rr, cy+Math.sin(th)*rr*Math.sin(tilt)*.9, cz+Math.sin(th)*rr*Math.cos(tilt)]);
+      }
+      const d=isDim("source",o.id);
+      SCENE.polys.push({pts,color:[74,92,130],alpha:d?.08:.30,width:.8,closed:true,back:true});
+      const th=(j*GOLD+CLOCK*.09*(1-j*.04))%TAU;
+      const pp=[cx+Math.cos(th)*rr, cy+Math.sin(th)*rr*Math.sin(tilt)*.9, cz+Math.sin(th)*rr*Math.cos(tilt)];
+      SCENE.points.push({p:pp,r:3.2+Math.sqrt(sizeMetric(o,maxN))*8.5,glyph:"dot",color:markRGB(o),alpha:.96,
+        label:S_BY_ID[o.id].dom,labelSize:9.5,labelMono:true,labelAlways:j<2&&!d,
+        dim:d,node:{kind:"source",id:o.id}});
+    });
+  });
+  SCENE.texts.push({p:[0,-660,0],text:"INNER RINGS ARE CITED EARLIER IN THE ANSWER · PLANET SIZE IS CITATION VOLUME",size:9.5,color:"rgba(106,119,148,.8)"});
+}
+
+/* ── 5.3 Sentiment space ───────────────────────────────────────────── */
+const AX_SIZE=390;
+function vSpace(){
+  const dim=STATE.axes.dim||"source";
+  const A=aggS(dim);
+  const list=[...A.values()].map(o=>enrich(o,dim));
+  if(!list.length)return;
+  const mx=METRICS[STATE.axes.x], my=METRICS[STATE.axes.y], mz=METRICS[STATE.axes.z];
+  const norm=m=>{
+    const vs=list.map(m.get).filter(v=>isFinite(v));
+    let lo=Math.min(...vs), hi=Math.max(...vs);
+    const pad=(hi-lo)*.12||.1; lo-=pad; hi+=pad;
+    if(m.min!==undefined&&m.min===-1){const k=Math.max(Math.abs(lo),Math.abs(hi));lo=-k;hi=k}
+    if(m.min!==undefined&&m.min===0) lo=Math.max(0,lo);
+    if(hi===lo)hi=lo+1;
+    return {lo,hi,f:v=>((v-lo)/(hi-lo)-.5)*2*AX_SIZE};
+  };
+  const nx=norm(mx),ny=norm(my),nz=norm(mz), grid=[74,92,130];
+  for(let i=0;i<=6;i++){
+    const t=-AX_SIZE+i*(AX_SIZE*2/6);
+    SCENE.polys.push({pts:[[t,-AX_SIZE,-AX_SIZE],[t,-AX_SIZE,AX_SIZE]],color:grid,alpha:.18,width:.7,back:true});
+    SCENE.polys.push({pts:[[-AX_SIZE,-AX_SIZE,t],[AX_SIZE,-AX_SIZE,t]],color:grid,alpha:.18,width:.7,back:true});
+    SCENE.polys.push({pts:[[-AX_SIZE,t,-AX_SIZE],[AX_SIZE,t,-AX_SIZE]],color:grid,alpha:.10,width:.7,back:true});
+  }
+  const K=AX_SIZE, corners=[[-K,-K,-K],[K,-K,-K],[K,-K,K],[-K,-K,K],[-K,K,-K],[K,K,-K],[K,K,K],[-K,K,K]];
+  [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,b])=>{
+    SCENE.polys.push({pts:[corners[a],corners[b]],color:grid,alpha:.24,width:.9,back:true});
+  });
+  if(mx.min===-1){const z=nx.f(0);SCENE.polys.push({pts:[[z,-AX_SIZE,-AX_SIZE],[z,-AX_SIZE,AX_SIZE]],color:[150,168,200],alpha:.34,width:1.1,back:true})}
+  const axc="rgba(168,182,208,.92)";
+  SCENE.texts.push({p:[0,-AX_SIZE-52,AX_SIZE+30],text:mx.name.toUpperCase()+"  →",size:10,color:axc});
+  SCENE.texts.push({p:[-AX_SIZE-16,AX_SIZE*.72,AX_SIZE],text:"↑ "+my.name.toUpperCase(),size:10,color:axc,align:"right"});
+  SCENE.texts.push({p:[AX_SIZE+50,-AX_SIZE-20,0],text:mz.name.toUpperCase()+" ↗",size:10,color:axc,align:"left"});
+  for(let i=0;i<=4;i++){
+    const t=i/4;
+    SCENE.texts.push({p:[-AX_SIZE+t*AX_SIZE*2,-AX_SIZE-22,AX_SIZE+10],text:mx.fmt(nx.lo+t*(nx.hi-nx.lo)),size:9,color:"rgba(106,119,148,.9)"});
+    SCENE.texts.push({p:[-AX_SIZE-14,-AX_SIZE+t*AX_SIZE*2,AX_SIZE],text:my.fmt(ny.lo+t*(ny.hi-ny.lo)),size:9,color:"rgba(106,119,148,.9)",align:"right"});
+  }
+  const maxN=Math.max(1,...list.map(o=>o.n));
+  list.forEach(o=>{
+    const P=[nx.f(mx.get(o)),ny.f(my.get(o)),nz.f(mz.get(o))];
+    const d=isDim(dim,o.id);
+    SCENE.polys.push({pts:[[P[0],-AX_SIZE,P[2]],P],color:markRGB(o),alpha:d?.06:.24,width:.8,back:true});
+    SCENE.points.push({p:P,r:4+Math.sqrt(sizeMetric(o,maxN))*11,glyph:dim==="platform"?"hex":dim==="prompt"?"diamond":"dot",
+      color:markRGB(o),alpha:.96,label:String(dimName(dim,o.id)).slice(0,32),labelSize:9.5,labelMono:dim==="source",
+      labelAlways:!d&&o.n/maxN>.55,dim:d,node:{kind:dim,id:o.id}});
+  });
+}
+
+/* ── 5.4 Landscape ─────────────────────────────────────────────────── */
+function topIds(dim,limit){
+  const A=aggS(dim);
+  return [...A.values()].sort((a,b)=>b.n-a.n).slice(0,limit).map(o=>o.id);
+}
+function vLandscape(){
+  const rd=STATE.matrix.rows, cd=STATE.matrix.cols;
+  const rows=topIds(rd,rd==="source"||rd==="prompt"?10:20);
+  const cols=topIds(cd,cd==="source"||cd==="prompt"?10:20);
+  if(!rows.length||!cols.length)return;
+  const cell=memoScope("cell:"+rd+":"+cd,()=>{
+    const m=new Map();
+    for(const r of SCOPE){
+      const k=DIM[rd].key(r)+"|"+DIM[cd].key(r);
+      let o=m.get(k); if(!o){o={n:0,sum:0,recs:[],answers:new Set(),sources:new Set(),pp:0};m.set(k,o)}
+      o.n++;o.sum+=r.sent;o.recs.push(r);o.answers.add(r.aid);o.sources.add(r.source);if(r.brand===CLIENT)o.pp++;
+    }
+    m.forEach(o=>{o.sent=o.sum/o.n});
+    return m;
+  });
+  const total=SCOPE.length||1;
+  const hv=o=>STATE.matrix.h==="citations"?o.n:STATE.matrix.h==="answers"?o.answers.size:o.n/total*100;
+  let maxH=0; cell.forEach(o=>{maxH=Math.max(maxH,hv(o))}); maxH=maxH||1;
+  const step=Math.min(126,820/Math.max(rows.length,cols.length));
+  const w=step*.54;
+  const x0=-(cols.length-1)*step/2, z0=-(rows.length-1)*step/2, floor=-200;
+  for(let i=0;i<=cols.length;i++){
+    const x=x0-step/2+i*step;
+    SCENE.polys.push({pts:[[x,floor,z0-step/2],[x,floor,z0-step/2+rows.length*step]],color:[74,92,130],alpha:.22,width:.7,back:true});
+  }
+  for(let i=0;i<=rows.length;i++){
+    const z=z0-step/2+i*step;
+    SCENE.polys.push({pts:[[x0-step/2,floor,z],[x0-step/2+cols.length*step,floor,z]],color:[74,92,130],alpha:.22,width:.7,back:true});
+  }
+  rows.forEach((rid,ri)=>{
+    const z=z0+ri*step;
+    SCENE.texts.push({p:[x0-step*.62,floor+2,z],text:String(dimName(rd,rid)).slice(0,18),size:9.5,align:"right",color:"rgba(168,182,208,.92)",depth:true});
+    cols.forEach((cid,ci)=>{
+      const o=cell.get(rid+"|"+cid); if(!o||!o.n)return;
+      enrich(o,rd);
+      const h=hv(o)/maxH*320;
+      SCENE.boxes.push({p:[x0+ci*step,floor,z],w,d:w,h,color:markRGB(o),alpha:1,
+        label:STATE.matrix.h==="share"?hv(o).toFixed(1)+"%":String(Math.round(hv(o))),
+        dim:isDim(rd,rid)&&isDim(cd,cid),
+        node:{kind:"cell",id:rid+"|"+cid,rd,cd,rid,cid}});
+    });
+  });
+  cols.forEach((cid,ci)=>{
+    SCENE.texts.push({p:[x0+ci*step,floor+2,z0+rows.length*step-step*(ci%2?.55:.02)],text:String(dimName(cd,cid)).slice(0,18),size:9.5,color:"rgba(168,182,208,.92)",depth:true});
+  });
+  SCENE.texts.push({p:[0,floor-58,z0+rows.length*step+step*.9],text:DIM[cd].label.toUpperCase()+"   ×   "+DIM[rd].label.toUpperCase(),size:10,color:"rgba(106,119,148,.95)"});
+}
+
+/* ── 5.5 Timeline helix ────────────────────────────────────────────── */
+function vHelix(){
+  const cut=STATE.sel&&["source","theme","brand","intent","prompt","stype"].includes(STATE.sel.kind);
+  const BASE=cut?selRecords():SCOPE;
+  const plats=PLATFORMS.filter(p=>BASE.some(r=>r.platform===p.id));
+  if(!plats.length)return;
+  const w0=STATE.wk[0], w1=STATE.wk[1], span=Math.max(1,w1-w0);
+  const n=plats.length, gap=Math.min(270,1240/n), RAD=Math.min(96,gap*.38);
+  plats.forEach((p,i)=>{
+    const cx=(i-(n-1)/2)*gap;
+    const pts=[],nodes=[];
+    for(let wk=w0;wk<=w1;wk++){
+      const recs=BASE.filter(r=>r.platform===p.id&&r.week===wk);
+      const t=(wk-w0)/span;
+      const a=t*TAU*1.75-Math.PI/2;
+      const P=[cx+Math.cos(a)*RAD,-250+t*500,Math.sin(a)*RAD];
+      pts.push(P);
+      if(recs.length) nodes.push({P,sent:recs.reduce((s,r)=>s+r.sent,0)/recs.length,n:recs.length,wk});
+    }
+    const d=isDim("platform",p.id);
+    if(pts.length>1) SCENE.polys.push({pts,color:[92,112,155],alpha:d?.12:.46,width:1.4});
+    const maxN=Math.max(1,...nodes.map(x=>x.n));
+    nodes.forEach(nd=>{
+      SCENE.points.push({p:nd.P,r:3.4+Math.sqrt(nd.n/maxN)*8.5,glyph:"dot",
+        color:STATE.colorby==="sentiment"?sentRGB(nd.sent):markRGB({sent:nd.sent,stype:"reference",brandTop:"paypal"}),
+        alpha:.96,label:"W"+nd.wk+" · "+sgn(nd.sent),labelSize:9,labelMono:true,dim:d,
+        node:{kind:"week",id:p.id+":"+nd.wk,platform:p.id,week:nd.wk}});
+    });
+    SCENE.texts.push({p:[cx,-312,0],text:p.name.toUpperCase(),size:10,color:d?"rgba(106,119,148,.6)":"rgba(214,226,246,.95)"});
+    const first=nodes[0],lastN=nodes[nodes.length-1];
+    if(first&&lastN){
+      const delta=lastN.sent-first.sent;
+      SCENE.texts.push({p:[cx,-344,0],text:(delta>=0?"▲ ":"▼ ")+sgn(delta)+" OVER WINDOW",size:8.5,
+        color:sentCSS(delta*2.2,.95)});
+    }
+  });
+  if(cut) SCENE.texts.push({p:[0,336,0],text:"STRANDS CUT TO "+selTitle().toUpperCase(),size:10,color:"rgba(120,170,240,.95)"});
+  SCENE.texts.push({p:[0,300,0],text:"WEEK "+w1+" AT THE TOP",size:9.5,color:"rgba(106,119,148,.85)"});
+  SCENE.texts.push({p:[0,-392,0],text:"ONE STRAND PER PLATFORM · WEEK "+w0+" AT THE BASE · WATCH COLOUR DRIFT, NOT HEIGHT",size:9.5,color:"rgba(106,119,148,.85)"});
+}
+
+/* ── 5.6 Coverage ──────────────────────────────────────────────────
+   The only view built on the ANSWER table rather than the citation table,
+   and therefore the only one that can show absence. Wireframe = every answer
+   in that cell. Solid = the share you were actually named in. A cell you are
+   invisible in draws as an empty cage, which is exactly how it should feel. */
+const AK={platform:a=>a.platform,theme:a=>a.theme,intent:a=>a.intent,prompt:a=>a.prompt};
+function vCoverage(){
+  if(!ANSWERS.length){
+    SCENE.texts.push({p:[0,40,0],text:"THIS RUN HAS NO ANSWER-LEVEL DATA",size:12,color:"rgba(200,214,238,.9)"});
+    SCENE.texts.push({p:[0,0,0],text:"COLLECT AGAIN WITH THE CURRENT BUILD TO RECORD WHERE YOU WERE ABSENT",size:9.5,color:"rgba(106,119,148,.9)"});
+    return;
+  }
+  const rd=STATE.coverage.rows, cd=STATE.coverage.cols;
+  const count=d=>{const m=new Map(); for(const a of ASCOPE){const k=AK[d](a); m.set(k,(m.get(k)||0)+1)} return m};
+  const pickTop=(d,lim)=>[...count(d).entries()].sort((x,y)=>y[1]-x[1]).slice(0,lim).map(e=>e[0]);
+  const rows=pickTop(rd, rd==="prompt"?10:20), cols=pickTop(cd, cd==="prompt"?10:20);
+  if(!rows.length||!cols.length) return;
+
+  const cell=new Map();
+  for(const a of ASCOPE){
+    const k=AK[rd](a)+"|"+AK[cd](a);
+    let o=cell.get(k); if(!o){o={n:0,seen:0,rec:0,first:0,flip:0,keys:new Set()};cell.set(k,o)}
+    o.n++; if(a.mentioned)o.seen++; if(a.recommended)o.rec++; if(a.first==="client")o.first++;
+    o.keys.add(a.prompt+"|"+a.platform);
+  }
+  const flips=new Set(VOL.filter(v=>v.flipped).map(v=>v.prompt+"|"+v.platform));
+  const sentOf=new Map();
+  for(const r of SCOPE){
+    if(r.brand!==CLIENT) continue;
+    const q=Q_BY_ID[r.prompt];
+    const kr=rd==="platform"?r.platform:rd==="prompt"?r.prompt:rd==="theme"?r.theme:r.intent;
+    const kc=cd==="platform"?r.platform:cd==="prompt"?r.prompt:cd==="theme"?r.theme:r.intent;
+    const k=kr+"|"+kc; let o=sentOf.get(k); if(!o){o={s:0,n:0};sentOf.set(k,o)} o.s+=r.sent; o.n++;
+  }
+  const step=Math.min(126,820/Math.max(rows.length,cols.length));
+  const w=step*.5, H=320;
+  const x0=-(cols.length-1)*step/2, z0=-(rows.length-1)*step/2, floor=-200;
+  for(let i=0;i<=cols.length;i++){
+    const x=x0-step/2+i*step;
+    SCENE.polys.push({pts:[[x,floor,z0-step/2],[x,floor,z0-step/2+rows.length*step]],color:[74,92,130],alpha:.20,width:.7,back:true});
+  }
+  for(let i=0;i<=rows.length;i++){
+    const z=z0-step/2+i*step;
+    SCENE.polys.push({pts:[[x0-step/2,floor,z],[x0-step/2+cols.length*step,floor,z]],color:[74,92,130],alpha:.20,width:.7,back:true});
+  }
+  const nm=(d,id)=>d==="prompt"?(Q_BY_ID[id]?.text||id):d==="platform"?(P_BY_ID[id]?.name||id)
+    :d==="theme"?(T_BY_ID[id]?.name||id):(INTENTS.find(x=>x.id===id)?.name||id);
+  rows.forEach((rid,ri)=>{
+    const z=z0+ri*step;
+    SCENE.texts.push({p:[x0-step*.62,floor+2,z],text:String(nm(rd,rid)).slice(0,18),size:9.5,align:"right",
+      color:"rgba(168,182,208,.92)",depth:true});
+    cols.forEach((cid,ci)=>{
+      const o=cell.get(rid+"|"+cid); if(!o||!o.n) return;
+      const x=x0+ci*step;
+      const rate=o.seen/o.n;
+      const sm=sentOf.get(rid+"|"+cid);
+      const col=sm&&sm.n?sentRGB(sm.s/sm.n):[103,113,140];
+      const node={kind:"cover",id:rid+"|"+cid,rd,cd,rid,cid};
+      SCENE.boxes.push({p:[x,floor,z],w,d:w,h:H,color:[86,104,144],alpha:.34,wire:true,node,
+        dim:isDim(rd,rid)&&isDim(cd,cid)});
+      if(rate>0) SCENE.boxes.push({p:[x,floor,z],w:w*.86,d:w*.86,h:Math.max(3,H*rate),
+        color:col,alpha:1,label:Math.round(rate*100)+"%",node,
+        dim:isDim(rd,rid)&&isDim(cd,cid)});
+      else SCENE.texts.push({p:[x,floor+16,z],text:"0%",size:10,color:"rgba(255,107,107,.95)",depth:true});
+      const unstable=[...o.keys].filter(k=>flips.has(k)).length/Math.max(1,o.keys.size);
+      if(unstable>=.4){
+        const y=floor+Math.max(3,H*rate)+3;
+        const pts=[]; for(let t=0;t<=26;t++){const th=t/26*TAU;
+          pts.push([x+Math.cos(th)*w*.52, y, z+Math.sin(th)*w*.52])}
+        SCENE.polys.push({pts,color:[201,133,0],alpha:.9,width:1.5,closed:true});
+      }
+    });
+  });
+  cols.forEach((cid,ci)=>{
+    SCENE.texts.push({p:[x0+ci*step,floor+2,z0+rows.length*step-step*(ci%3)*.42],
+      text:String(nm(cd,cid)).slice(0,15),size:9.5,color:"rgba(168,182,208,.92)",depth:true});
+  });
+  const seen=ASCOPE.filter(a=>a.mentioned).length;
+  SCENE.texts.push({p:[0,floor-58,z0+rows.length*step+step*.9],
+    text:`CAGE = ALL ${ASCOPE.length} ANSWERS · SOLID = THE ${seen} YOU WERE NAMED IN · AMBER RING = UNSTABLE ACROSS REPEATS`,
+    size:10,color:"rgba(106,119,148,.95)"});
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   6 · SELECTION + READOUT
+   ══════════════════════════════════════════════════════════════════════ */
+function selRecords(){
+  const s=STATE.sel; if(!s) return SCOPE;
+  if(s.kind==="cell"||s.kind==="cover"){const n=s.node;return SCOPE.filter(r=>DIM[n.rd].key(r)===n.rid&&DIM[n.cd].key(r)===n.cid)}
+  if(s.kind==="week"){return SCOPE.filter(r=>r.platform===s.node.platform&&r.week===s.node.week)}
+  const key=DIM[s.kind]?DIM[s.kind].key:null;
+  return key?SCOPE.filter(r=>key(r)===s.id):SCOPE;
+}
+function setSel(node){
+  if(!node){STATE.sel=null;STATE.linked=null}
+  else{
+    STATE.sel={kind:node.kind,id:node.id,node};
+    const recs=selRecords(), L=new Set();
+    for(const r of recs){L.add("platform:"+r.platform);L.add("source:"+r.source);L.add("prompt:"+r.prompt);
+      L.add("theme:"+r.theme);L.add("brand:"+r.brand);L.add("stype:"+r.stype);L.add("week:"+r.platform+":"+r.week)}
+    STATE.linked=L;
+  }
+  paintReadout(); markDirty();
+}
+function selTitle(){
+  const s=STATE.sel; if(!s) return "Everything in scope";
+  if(s.kind==="cell"||s.kind==="cover") return dimName(s.node.rd,s.node.rid)+" × "+dimName(s.node.cd,s.node.cid);
+  if(s.kind==="week") return P_BY_ID[s.node.platform].name+" · week "+s.node.week;
+  return dimName(s.kind,s.id);
+}
+function selKind(){
+  const s=STATE.sel; if(!s) return SCOPE.length+" citations across every filter you have left open";
+  if(s.kind==="cell") return "CROSSTAB CELL";
+  if(s.kind==="cover") return "COVERAGE CELL";
+  if(s.kind==="week") return "PLATFORM · WEEK";
+  return (DIM[s.kind]?DIM[s.kind].label:s.kind).toUpperCase();
+}
+const clientName=()=>(B_BY_ID[CLIENT]||{}).name||"Client";
+function stats(recs){
+  const n=recs.length;
+  const sent=n?recs.reduce((s,r)=>s+r.sent,0)/n:0;
+  const ans=new Set(recs.map(r=>r.aid)).size;
+  const src=new Set(recs.map(r=>r.source)).size;
+  const pp=recs.filter(r=>r.brand===CLIENT).length;
+  const bands={neg:0,neu:0,pos:0}; recs.forEach(r=>bands[r.bandId]++);
+  const first=recs.filter(r=>r.rank===1).length;
+  return {n,sent,ans,src,pp,bands,first};
+}
+function bar(label,val,max,color,onClick,sub){
+  const el=document.createElement("div"); el.className="bar";
+  el.innerHTML=`<div class="top"><span class="lb"></span><span class="vv"></span></div><div class="track"><i></i></div>`;
+  el.querySelector(".lb").textContent=label;
+  el.querySelector(".vv").textContent=sub;
+  const i=el.querySelector("i"); i.style.width=Math.max(2,val/max*100)+"%"; i.style.background=color;
+  if(onClick){el.onclick=onClick} else el.style.cursor="default";
+  return el;
+}
+/* Answers matching the current selection, so absence can be read alongside tone. */
+function answersFor(){
+  const s=STATE.sel;
+  if(!ANSWERS.length) return [];
+  if(!s) return ASCOPE;
+  if(s.kind==="cover"||s.kind==="cell"){
+    const k={platform:a=>a.platform,theme:a=>a.theme,intent:a=>a.intent,prompt:a=>a.prompt};
+    if(k[s.node.rd]&&k[s.node.cd])
+      return ASCOPE.filter(a=>k[s.node.rd](a)===s.node.rid&&k[s.node.cd](a)===s.node.cid);
+    return ASCOPE;
+  }
+  if(s.kind==="platform") return ASCOPE.filter(a=>a.platform===s.id);
+  if(s.kind==="theme")    return ASCOPE.filter(a=>a.theme===s.id);
+  if(s.kind==="intent")   return ASCOPE.filter(a=>a.intent===s.id);
+  if(s.kind==="prompt")   return ASCOPE.filter(a=>a.prompt===s.id);
+  if(s.kind==="week")     return ASCOPE.filter(a=>a.platform===s.node.platform&&a.week===s.node.week);
+  return [];
+}
+function paintReadout(){
+  const recs=selRecords(), st=stats(recs);
+  document.getElementById("det-t").textContent=selTitle();
+  document.getElementById("det-s").textContent=selKind();
+  document.getElementById("clr-sel").hidden=!STATE.sel;
+  const body=document.getElementById("rail-r-body");
+  body.innerHTML="";
+  if(!st.n){body.innerHTML='<div class="empty">Nothing left in scope.<br>Loosen a filter on the left.</div>';return}
+
+  const k=document.createElement("div"); k.className="kpis";
+  const kpi=(label,val,d,col)=>`<div class="kpi"><div class="k">${label}</div><div class="v" style="color:${col||"var(--ink)"}">${val}</div><div class="d">${d}</div></div>`;
+  const asel=answersFor();
+  const seen=asel.length?Math.round(asel.filter(a=>a.mentioned).length/asel.length*100):null;
+  const unsup=recs.filter(r=>r.support==="unsupported").length;
+  const conf=recs.filter(r=>r.factConflict).length;
+  k.innerHTML=(seen!==null
+      ? kpi("Seen in",seen+"%",asel.length+" answers in scope",seen>=50?"#4d9cff":"#ff6b6b")
+      : kpi("Citations",fmt(st.n),st.ans+" distinct answers"))
+            + kpi("Avg sentiment",sgn(st.sent),sentWord(st.sent),sentCSS(st.sent))
+            + kpi(seen!==null?"Citations":"Sources",seen!==null?fmt(st.n):st.src,
+                  seen!==null?st.src+" distinct sources":"of "+SOURCES.length+" tracked")
+            + ((unsup||conf)
+                ? kpi(unsup?"Unsupported":"Fact conflicts",unsup||conf,
+                      unsup?"cited page doesn't say it":"contradicts your facts","#ff6b6b")
+                : kpi(clientName()+" share",Math.round(st.pp/st.n*100)+"%","of brand mentions"));
+  body.appendChild(k);
+
+  const sec=(title,extra)=>{const d=document.createElement("div");d.className="sec";
+    d.innerHTML=`<div class="sec-h"><span>${title}</span>${extra?`<span style="font-family:var(--mono);font-size:9.5px">${extra}</span>`:""}</div>`;return d};
+
+  const s1=sec("Tone mix");
+  const sb=document.createElement("div"); sb.className="splitbar";
+  [["neg",sentCSS(-.7)],["neu",sentCSS(0)],["pos",sentCSS(.7)]].forEach(([b,c])=>{
+    const i=document.createElement("i"); i.style.flex=String(st.bands[b]||0.001); i.style.background=c;
+    i.title=b; sb.appendChild(i);
+  });
+  s1.appendChild(sb);
+  const key=document.createElement("div"); key.className="splitkey";
+  key.innerHTML=`<span>▼ ${Math.round(st.bands.neg/st.n*100)}% neg</span><span>● ${Math.round(st.bands.neu/st.n*100)}% mixed</span><span>▲ ${Math.round(st.bands.pos/st.n*100)}% pos</span>`;
+  s1.appendChild(key);
+  const fr=document.createElement("div"); fr.className="splitkey"; fr.style.marginTop="7px";
+  fr.innerHTML=`<span>Cited first in answer</span><span>${Math.round(st.first/st.n*100)}%</span>`;
+  s1.appendChild(fr);
+  body.appendChild(s1);
+
+  const rank=(dim,title,limit)=>{
+    const A=agg(recs,dim);
+    const list=[...A.values()].map(o=>enrich(o,dim)).sort((a,b)=>b.n-a.n).slice(0,limit);
+    if(list.length<2)return;
+    const max=list[0].n, s=sec(title,"cites · tone");
+    const wrap=document.createElement("div"); wrap.className="bars";
+    list.forEach(o=>{
+      wrap.appendChild(bar(dimName(dim,o.id),o.n,max,sentCSS(o.sent),
+        ()=>setSel({kind:dim,id:o.id}), o.n+" · "+sgn(o.sent)));
+    });
+    s.appendChild(wrap); body.appendChild(s);
+  };
+  rank("source","Sources feeding this",9);
+  rank("platform","Platforms",6);
+  rank("theme","Topics",6);
+
+  const s3=sec("What was actually said","top "+Math.min(16,recs.length));
+  const wrap=document.createElement("div"); wrap.className="snips";
+  const sorted=recs.slice().sort((a,b)=>(Math.abs(b.sent)+(b.rank===1?.3:0))-(Math.abs(a.sent)+(a.rank===1?.3:0))).slice(0,16);
+  sorted.forEach(r=>{
+    const d=document.createElement("div"); d.className="snip";
+    d.style.borderLeftColor=sentCSS(r.sent);
+    const badge=[];
+    if(r.support==="unsupported") badge.push('<span class="tag bad">page doesn\u2019t back it</span>');
+    if(r.factConflict) badge.push('<span class="tag bad">contradicts our facts</span>');
+    (r.risks||[]).forEach(x=>badge.push(`<span class="tag warn">${x}</span>`));
+    if(r.verdict==="client loses") badge.push('<span class="tag bad">we lose here</span>');
+    if(r.verdict==="client wins")  badge.push('<span class="tag good">we win here</span>');
+    const tags=badge.join("")+r.nuance.map(t=>`<span class="tag">${t}</span>`).join("")
+      +`<span class="tag tone">${r.tone}</span>`;
+    d.innerHTML=`<div class="sh"><span class="plat">${P_BY_ID[r.platform].name}</span><span class="sep">·</span>
+      <span class="src">${S_BY_ID[r.source].dom}</span><span class="sep">·</span><span class="src">W${r.week}</span>
+      <span class="score" style="color:${sentCSS(r.sent)}">${sentGlyph(r.sent)} ${sgn(r.sent)}</span></div>
+      <div class="q0">“${Q_BY_ID[r.prompt].text}”</div><q>${r.text}</q><div class="tags">${tags}</div>`;
+    wrap.appendChild(d);
+  });
+  s3.appendChild(wrap); body.appendChild(s3);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   7 · CONTROLS
+   ══════════════════════════════════════════════════════════════════════ */
+let dirty=true; const markDirty=()=>{dirty=true};
+function refresh(){ rescope(); paintFilters(); paintReadout(); paintScope(); markDirty() }
+
+function chipRow(hostId,dim,items,nameFn){
+  const host=document.getElementById(hostId); host.innerHTML="";
+  const keys=Object.keys(STATE.f).filter(k=>k!==dim);
+  const pool=RECORDS.filter(r=>keys.every(k=>STATE.f[k].has(FKEY[k](r)))&&r.week>=STATE.wk[0]&&r.week<=STATE.wk[1]);
+  const counts={}; for(const r of pool){const k=FKEY[dim](r); counts[k]=(counts[k]||0)+1}
+  items.forEach(it=>{
+    const b=document.createElement("button"); b.className="chip";
+    const on=STATE.f[dim].has(it.id);
+    b.setAttribute("aria-pressed",on?"true":"false");
+    const n=counts[it.id]||0;
+    let dotCol="var(--cat-other)";
+    if(dim==="band") dotCol=sentCSS(it.id==="pos"?.7:it.id==="neg"?-.7:0);
+    if(dim==="stype") dotCol=rgba(catRGB(STYPE_CAT[it.id]),1);
+    if(dim==="brand") dotCol=rgba(catRGB(BRAND_CAT[it.id]),1);
+    b.innerHTML=`<span class="dot" style="background:${dotCol}"></span><span>${nameFn?nameFn(it):it.name}</span><span class="n">${n}</span>`;
+    if(dim==="platform"||dim==="theme"||dim==="intent") b.querySelector(".dot").remove();
+    b.onclick=e=>{
+      if(e.shiftKey){STATE.f[dim]=new Set([it.id])}
+      else{const s=STATE.f[dim]; s.has(it.id)?s.delete(it.id):s.add(it.id)}
+      refresh();
+    };
+    b.title=(nameFn?nameFn(it):it.name)+" — click to toggle, shift-click to isolate";
+    host.appendChild(b);
+  });
+}
+function paintSources(){
+  const host=document.getElementById("f-source"); host.innerHTML="";
+  const A=agg(RECORDS.filter(r=>{
+    const f=STATE.f;
+    return f.platform.has(r.platform)&&f.stype.has(r.stype)&&f.band.has(r.bandId)&&f.theme.has(r.theme)
+      &&f.brand.has(r.brand)&&f.intent.has(r.intent)&&r.week>=STATE.wk[0]&&r.week<=STATE.wk[1];
+  }),"source");
+  const q=STATE.srcQuery.toLowerCase();
+  const list=SOURCES.filter(s=>!q||s.dom.includes(q)||s.type.includes(q))
+    .map(s=>({s,o:A.get(s.id)})).sort((a,b)=>(b.o?b.o.n:0)-(a.o?a.o.n:0));
+  const max=Math.max(1,...list.map(x=>x.o?x.o.n:0));
+  list.forEach(({s,o})=>{
+    const b=document.createElement("button"); b.className="srcrow";
+    const on=STATE.f.source.has(s.id);
+    b.setAttribute("aria-pressed",on?"true":"false");
+    const sent=o?o.sum/o.n:0;
+    b.innerHTML=`<span class="sq" style="background:${rgba(catRGB(STYPE_CAT[s.type]),on?1:.4)}"></span>
+      <span class="nm">${s.dom}</span><span class="ct">${o?o.n:0}</span>
+      <span class="sb"><i style="left:0;width:${o?Math.max(6,o.n/max*100):0}%;background:${sentCSS(sent)}"></i></span>`;
+    b.title=s.dom+" · "+ST_BY_ID[s.type].name+" · authority "+s.auth.toFixed(2)+(o?" · avg tone "+sgn(sent):"");
+    b.onclick=e=>{
+      if(e.shiftKey){STATE.f.source=new Set([s.id])}
+      else{const set=STATE.f.source; set.has(s.id)?set.delete(s.id):set.add(s.id)}
+      refresh();
+    };
+    host.appendChild(b);
+  });
+}
+function paintFlags(){
+  const host=document.getElementById("f-flags"); host.innerHTML="";
+  FLAGS.forEach(f=>{
+    const on=STATE.flags.has(f.id);
+    const n=RECORDS.filter(r=>hasFlag(r,f.id)).length;
+    const b=document.createElement("button"); b.className="chip";
+    b.setAttribute("aria-pressed",on?"true":"false");
+    b.innerHTML=`<span>${f.name}</span><span class="n">${n}</span>`;
+    b.disabled=!n && !on;
+    b.style.opacity=(!n&&!on)?".45":"";
+    b.onclick=()=>{ on?STATE.flags.delete(f.id):STATE.flags.add(f.id); refresh(); };
+    b.title=n?`${n} citation${n===1?"":"s"} carry this`:"nothing in this dataset carries this flag";
+    host.appendChild(b);
+  });
+}
+function paintFilters(){
+  chipRow("f-platform","platform",PLATFORMS);
+  chipRow("f-stype","stype",STYPES);
+  chipRow("f-band","band",BANDS);
+  chipRow("f-verdict","verdict",VERDICTS_L);
+  chipRow("f-influence","influence",INFLUENCES);
+  paintFlags();
+  chipRow("f-theme","theme",THEMES);
+  chipRow("f-brand","brand",BRANDS);
+  chipRow("f-intent","intent",INTENTS);
+  paintSources();
+}
+function paintScope(){
+  const st=stats(SCOPE);
+  document.getElementById("scopemeta").innerHTML=
+    `<b>${fmt(st.n)}</b> citations · <b>${st.ans}</b> answers · <b>${st.src}</b> sources · tone <b style="color:${sentCSS(st.sent)}">${sgn(st.sent)}</b>`;
+}
+
+/* Presets resolve against whatever data is loaded — with a real bundle the
+   labels rename themselves to the actual top platform, top rival and worst
+   topic, so the shortcuts stay meaningful instead of pointing at dead ids. */
+function topOf(dim,fn){
+  const A=agg(RECORDS,dim); const list=[...A.values()];
+  if(!list.length) return null;
+  return list.sort(fn||((a,b)=>b.n-a.n))[0].id;
+}
+function presets(){
+  const topPlat=topOf("platform")||PLATFORMS[0]?.id;
+  const rival=(BRANDS.filter(x=>!x.client&&!x.sibling&&x.id!=="none")[0]||{}).id;
+  const worstTheme=topOf("theme",(x,y)=>(x.sum/x.n)-(y.sum/y.n));
+  const lastSix=[Math.max(1,MAXWEEK-5),MAXWEEK];
+  const nm=id=>B_BY_ID[id]?.name||id;
+  const has=f=>RECORDS.some(r=>hasFlag(r,f));
+  const out=[];
+  if(ANSWERS.length) out.push({n:"Where we never appear",s:"the empty cages, platform × topic",
+    a:()=>{resetF();STATE.coverage={rows:"platform",cols:"theme"};setView("coverage")}});
+  if(has("unsupported")) out.push({n:"Claims the page doesn't back",s:"cited, checked, and it isn't there",
+    a:()=>{resetF();STATE.flags=new Set(["unsupported"]);setView("constellation")}});
+  if(has("conflict")) out.push({n:"Contradicts our own facts",s:"answers stating things we know are false",
+    a:()=>{resetF();STATE.flags=new Set(["conflict"]);setView("constellation")}});
+  if(has("lost")) out.push({n:"Head-to-heads we lose",s:"where the answer picks someone else",
+    a:()=>{resetF();STATE.flags=new Set(["lost"]);STATE.matrix={rows:"platform",cols:"theme",h:"citations"};setView("landscape")}});
+  out.push({n:"Fixable today",s:"only sources we own or can petition",
+    a:()=>{resetF();STATE.f.influence=new Set(["owned","rented"]);setView("orbits")}});
+  out.push({n:"What the forums feed them",s:"UGC only \u00b7 our brand",
+    a:()=>{resetF();STATE.f.influence=new Set(["ugc"]);STATE.f.brand=new Set([CLIENT]);setView("constellation")}});
+  out.push({n:"Where the tone turns",s:"negative citations only, by platform \u00d7 topic",
+    a:()=>{resetF();STATE.f.band=new Set(["neg"]);STATE.matrix={rows:"platform",cols:"theme",h:"citations"};setView("landscape")}});
+  if(topPlat) out.push({n:(P_BY_ID[topPlat]?.name||topPlat)+", close up",s:"one platform, every source and claim",
+    a:()=>{resetF();STATE.f.platform=new Set([topPlat]);setView("orbits")}});
+  if(rival) out.push({n:"Head-to-head with "+nm(rival),s:"our mentions against theirs, across topics",
+    a:()=>{resetF();STATE.f.brand=new Set([CLIENT,rival]);STATE.matrix={rows:"brand",cols:"theme",h:"citations"};setView("landscape")}});
+  out.push({n:"Authority vs affection",s:"do the sources that trust us carry weight?",
+    a:()=>{resetF();STATE.axes={dim:"source",x:"sent",y:"cites",z:"auth"};setView("space");syncSelects()}});
+  if(worstTheme) out.push({n:(T_BY_ID[worstTheme]?.name||worstTheme)+", the sore spot",s:"the topic dragging the average down",
+    a:()=>{resetF();STATE.f.theme=new Set([worstTheme]);setView("constellation")}});
+  if(MAXWEEK>2) out.push({n:"Last "+(lastSix[1]-lastSix[0]+1)+" weeks",s:"recent drift, one strand per platform",
+    a:()=>{resetF();STATE.wk=lastSix;syncWeekInputs();setView("helix")}});
+  return out;
+}
+function paintPresets(){
+  const pw=$("presets"); pw.innerHTML="";
+  presets().forEach(pr=>{
+    const b=document.createElement("button"); b.className="preset";
+    b.innerHTML=`${pr.n}<small>${pr.s}</small>`;
+    b.onclick=()=>{pr.a();refresh();syncSelects()};
+    pw.appendChild(b);
+  });
+}
+function syncWeekInputs(){
+  const wf=$("wk-from"), wt=$("wk-to");
+  wf.max=wt.max=MAXWEEK;
+  wf.value=STATE.wk[0]; wt.value=STATE.wk[1];
+  $("wk-lab").textContent="W"+STATE.wk[0]+"–W"+STATE.wk[1];
+}
+function resetF(){
+  STATE.f={platform:allIds(PLATFORMS),stype:allIds(STYPES),source:allIds(SOURCES),
+    band:allIds(BANDS),theme:allIds(THEMES),brand:allIds(BRANDS),intent:allIds(INTENTS),
+    verdict:allIds(VERDICTS_L),influence:allIds(INFLUENCES)};
+  STATE.flags=new Set();
+  STATE.wk=[1,MAXWEEK]; STATE.srcQuery=""; document.getElementById("srcsearch").value="";
+  STATE.sel=null; STATE.linked=null; STATE.colorby="sentiment";
+  syncWeekInputs();
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   8 · WIRING
+   ══════════════════════════════════════════════════════════════════════ */
+const FKEY={platform:r=>r.platform,stype:r=>r.stype,source:r=>r.source,band:r=>r.bandId,
+            theme:r=>r.theme,brand:r=>r.brand,intent:r=>r.intent,
+            verdict:r=>r.verdict||"not compared", influence:r=>infOf(r)};
+let SCOPE_V=0; const _ac=new Map();
+function aggS(dim){const k=dim+"@"+SCOPE_V; let m=_ac.get(k); if(!m){m=agg(SCOPE,dim);_ac.set(k,m)} return m}
+function memoScope(key,fn){const k=key+"@"+SCOPE_V; let v=_ac.get(k); if(v===undefined){v=fn();_ac.set(k,v)} return v}
+function sizeMetric(o,maxN){
+  switch(STATE.sizeby){
+    case "authority": return o.auth??.5;
+    case "rank": return o.prom??.5;
+    case "uniform": return .45;
+    default: return (o.n||0)/(maxN||1);
+  }
+}
+function setView(v){
+  STATE.view=v;
+  document.querySelectorAll("#viewtabs button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.v===v?"true":"false"));
+  document.getElementById("axis-sec").hidden=v!=="space";
+  document.getElementById("matrix-sec").hidden=v!=="landscape";
+  document.getElementById("cover-sec").hidden=v!=="coverage";
+  document.getElementById("hint").innerHTML=VIEWS.find(x=>x.id===v).hint;
+  const home={constellation:[.70,.24,2250],orbits:[.62,.52,2150],space:[.78,.36,1340],landscape:[.66,.46,1360],helix:[.26,.08,1800],coverage:[.62,.40,1500]}[v];
+  cam.gyaw=home[0]; cam.gpitch=home[1]; cam.gdist=home[2]; cam.ty=0;
+  STATE.auto=(v==="constellation"||v==="orbits");
+  paintGlyphKey(); markDirty();
+}
+function paintGlyphKey(){
+  const host=document.getElementById("glyphkey");
+  const g=(shape,label)=>`<span class="gl">${shape}<span>${label}</span></span>`;
+  const hex='<svg width="11" height="11" viewBox="0 0 12 12"><polygon points="6,1 10.3,3.5 10.3,8.5 6,11 1.7,8.5 1.7,3.5" fill="none" stroke="#9aa8c4" stroke-width="1.1"/></svg>';
+  const dia='<svg width="11" height="11" viewBox="0 0 12 12"><polygon points="6,1 10,6 6,11 2,6" fill="none" stroke="#9aa8c4" stroke-width="1.1"/></svg>';
+  const dot='<svg width="11" height="11" viewBox="0 0 12 12"><circle cx="6" cy="6" r="4" fill="none" stroke="#9aa8c4" stroke-width="1.1"/></svg>';
+  const parts={
+    constellation:g(hex,"PLATFORM")+g(dia,"QUERY")+g(dot,"SOURCE"),
+    orbits:g(hex,"PLATFORM")+g(dot,"SOURCE")+g("","RING = HOW EARLY IT IS CITED"),
+    space:g(dot,"ONE ENTITY")+g("","SIZE = "+({citations:"CITATIONS",authority:"AUTHORITY",rank:"PROMINENCE",uniform:"UNIFORM"}[STATE.sizeby])),
+    landscape:g("","BAR HEIGHT = VOLUME")+g("","BAR COLOUR = TONE"),
+    helix:g(dot,"PLATFORM-WEEK")+g("","BASE = EARLIEST WEEK"),
+    coverage:g("","CAGE = EVERY ANSWER")+g("","SOLID = HOW OFTEN YOU APPEAR")+g("","COLOUR = TONE WHEN YOU DO"),
+  }[STATE.view];
+  host.innerHTML=parts;
+}
+function syncSelects(){
+  colorby.value=STATE.colorby; sizeby.value=STATE.sizeby;
+  if(window.plotdim) plotdim.value=STATE.axes.dim||"source";
+  axx.value=STATE.axes.x; axy.value=STATE.axes.y; axz.value=STATE.axes.z;
+  mxr.value=STATE.matrix.rows; mxc.value=STATE.matrix.cols; mxh.value=STATE.matrix.h;
+}
+const $=id=>document.getElementById(id);
+const colorby=$("colorby"), sizeby=$("sizeby"), axx=$("ax-x"), axy=$("ax-y"), axz=$("ax-z"),
+      mxr=$("mx-rows"), mxc=$("mx-cols"), mxh=$("mx-h");
+function opts(sel,pairs,val){
+  sel.innerHTML=pairs.map(([v,n])=>`<option value="${v}">${n}</option>`).join("");
+  if(val!==undefined) sel.value=val;
+}
+function initUI(){
+  const tabs=$("viewtabs");
+  VIEWS.forEach((v,i)=>{
+    const b=document.createElement("button"); b.textContent=v.name; b.dataset.v=v.id;
+    b.title=v.name+"  ("+(i+1)+")"; b.onclick=()=>{setView(v.id);};
+    tabs.appendChild(b);
+  });
+  paintPresets();
+  // space: what to plot
+  const f=document.createElement("div"); f.className="field";
+  f.innerHTML='<label for="plotdim">Plot one point per</label><select id="plotdim"></select>';
+  $("axis-sec").insertBefore(f,$("axis-sec").children[1]);
+  const plot=$("plotdim"); window.plotdim=plot;
+  opts(plot,[["source","Source"],["prompt","Query"],["platform","AI platform"],["theme","Topic"],["brand","Wallet"]],"source");
+  plot.onchange=()=>{STATE.axes.dim=plot.value;setSel(null);markDirty()};
+  const mpairs=Object.entries(METRICS).map(([k,m])=>[k,m.name]);
+  opts(axx,mpairs,STATE.axes.x); opts(axy,mpairs,STATE.axes.y); opts(axz,mpairs,STATE.axes.z);
+  [["x",axx],["y",axy],["z",axz]].forEach(([k,el])=>el.onchange=()=>{STATE.axes[k]=el.value;markDirty()});
+  const dpairs=[["platform","AI platform"],["theme","Topic"],["stype","Source type"],["source","Source (top 12)"],
+                ["brand","Wallet"],["intent","Query intent"],["prompt","Query (top 12)"]];
+  opts(mxr,dpairs,STATE.matrix.rows); opts(mxc,dpairs,STATE.matrix.cols);
+  const cvr=$("cv-rows"), cvc=$("cv-cols");
+  const apairs=[["platform","AI platform"],["theme","Topic"],["intent","Query intent"],["prompt","Query (top 10)"]];
+  opts(cvr,apairs,STATE.coverage.rows); opts(cvc,apairs,STATE.coverage.cols);
+  cvr.onchange=()=>{STATE.coverage.rows=cvr.value;setSel(null);markDirty()};
+  cvc.onchange=()=>{STATE.coverage.cols=cvc.value;setSel(null);markDirty()};
+  $("clr-flags").onclick=()=>{STATE.flags.clear();refresh()};
+  mxr.onchange=()=>{STATE.matrix.rows=mxr.value;setSel(null);markDirty()};
+  mxc.onchange=()=>{STATE.matrix.cols=mxc.value;setSel(null);markDirty()};
+  mxh.onchange=()=>{STATE.matrix.h=mxh.value;markDirty()};
+  colorby.onchange=()=>{STATE.colorby=colorby.value;paintGlyphKey();markDirty()};
+  sizeby.onchange=()=>{STATE.sizeby=sizeby.value;paintGlyphKey();markDirty()};
+  $("srcsearch").oninput=e=>{STATE.srcQuery=e.target.value.trim();paintSources()};
+  document.querySelectorAll("[data-all]").forEach(b=>{
+    b.onclick=()=>{
+      const d=b.dataset.all, all=({platform:PLATFORMS,stype:STYPES,band:BANDS,theme:THEMES,
+        brand:BRANDS,intent:INTENTS,verdict:VERDICTS_L,influence:INFLUENCES})[d];
+      STATE.f[d]=STATE.f[d].size===all.length?new Set():allIds(all);
+      if(d==="stype"){STATE.f.source=new Set(SOURCES.filter(s=>STATE.f.stype.has(s.type)).map(s=>s.id))}
+      refresh();
+    };
+  });
+  $("reset-all").onclick=()=>{resetF();setView(ANSWERS.length?"coverage":"constellation");refresh();syncSelects()};
+  $("clr-sel").onclick=()=>setSel(null);
+  $("btn-l").onclick=()=>{railsAuto=false;$("rail-l").classList.toggle("hidden");recentre();markDirty()};
+  $("btn-r").onclick=()=>{railsAuto=false;$("rail-r").classList.toggle("hidden");recentre();markDirty()};
+  $("btn-table").onclick=()=>{buildTable();$("tablewrap").classList.add("on")};
+  $("closetable").onclick=()=>$("tablewrap").classList.remove("on");
+  const wf=$("wk-from"), wt=$("wk-to");
+  const wsync=()=>{
+    let a=+wf.value,b=+wt.value; if(a>b){if(document.activeElement===wf)b=a,wt.value=b;else a=b,wf.value=a}
+    STATE.wk=[a,b]; $("wk-lab").textContent="W"+a+"–W"+b; refresh();
+  };
+  wf.oninput=wsync; wt.oninput=wsync;
+  addEventListener("keydown",e=>{
+    if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;
+    const i="12345".indexOf(e.key);
+    if(i>=0){setView(VIEWS[i].id);return}
+    if(e.key==="Escape"){setSel(null);$("tablewrap").classList.remove("on")}
+    if(e.key===" "){STATE.auto=!STATE.auto;e.preventDefault()}
+  });
+  syncSelects();
+}
+function buildTable(){
+  const A=aggS("source");
+  const rows=[...A.values()].map(o=>enrich(o,"source")).sort((a,b)=>b.n-a.n);
+  const pl=o=>{const c={};o.recs.forEach(r=>c[r.platform]=(c[r.platform]||0)+1);
+    const k=Object.keys(c).sort((a,b)=>c[b]-c[a])[0];return k?P_BY_ID[k].name:"—"};
+  $("tablebody").innerHTML=`<table><thead><tr>
+    <th>Source</th><th>Type</th><th>Citations</th><th>Queries</th><th>Avg sentiment</th>
+    <th>Tone</th><th>% PayPal</th><th>Authority</th><th>Top platform</th></tr></thead><tbody>`
+    +rows.map(o=>`<tr><td>${S_BY_ID[o.id].dom}</td><td>${ST_BY_ID[o.stype].name}</td>
+      <td class="num">${o.n}</td><td class="num">${new Set(o.recs.map(r=>r.prompt)).size}</td><td class="num">${sgn(o.sent)}</td>
+      <td>${sentWord(o.sent)}</td><td class="num">${Math.round(o.pp/o.n*100)}%</td>
+      <td class="num">${o.auth.toFixed(2)}</td><td>${pl(o)}</td></tr>`).join("")
+    +`</tbody></table>`;
+}
+
+/* ── pointer ───────────────────────────────────────────────────────── */
+let drag=null, moved=0;
+cvs.addEventListener("pointerdown",e=>{
+  drag={x:e.clientX,y:e.clientY,yaw:cam.gyaw,pitch:cam.gpitch,pan:e.shiftKey||e.button===1,ty:cam.ty};
+  moved=0; cvs.setPointerCapture(e.pointerId); cvs.classList.add("dragging");
+});
+cvs.addEventListener("pointermove",e=>{
+  const r=cvs.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  if(drag){
+    const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+    moved=Math.max(moved,Math.abs(dx)+Math.abs(dy));
+    if(drag.pan){ cam.ty=drag.ty+dy*1.4 }
+    else{ cam.gyaw=drag.yaw+dx*.006; cam.gpitch=clamp(drag.pitch-dy*.005,-1.35,1.35) }
+    markDirty(); hideTip(); return;
+  }
+  const h=hitTest(mx,my);
+  const nh=h?h.node:null;
+  const changed=(nh&&(!STATE.hover||STATE.hover.id!==nh.id||STATE.hover.kind!==nh.kind))||(!nh&&STATE.hover);
+  STATE.hover=nh; if(changed)markDirty();
+  if(nh) showTip(nh,mx,my); else hideTip();
+  cvs.style.cursor=nh?"pointer":(drag?"grabbing":"grab");
+});
+addEventListener("pointerup",e=>{
+  if(drag&&moved<5){
+    const r=cvs.getBoundingClientRect();
+    const h=hitTest(e.clientX-r.left,e.clientY-r.top);
+    setSel(h?h.node:null);
+  }
+  drag=null; cvs.classList.remove("dragging");
+});
+cvs.addEventListener("wheel",e=>{
+  e.preventDefault();
+  cam.gdist=clamp(cam.gdist*(1+Math.sign(e.deltaY)*.10),260,3200); markDirty();
+},{passive:false});
+cvs.addEventListener("dblclick",()=>{setView(STATE.view);setSel(null)});
+function hitTest(x,y){
+  let best=null,bd=1e9;
+  for(const h of HITS){
+    const d=(h.x-x)**2+(h.y-y)**2;
+    if(d<h.r*h.r&&d<bd){bd=d;best=h}
+  }
+  return best;
+}
+const tip=$("tip");
+function hideTip(){tip.style.opacity=0}
+function showTip(node,x,y){
+  let recs, title, kind;
+  if(node.kind==="cell"||node.kind==="cover"){recs=SCOPE.filter(r=>DIM[node.rd].key(r)===node.rid&&DIM[node.cd].key(r)===node.cid);
+    title=dimName(node.rd,node.rid)+" × "+dimName(node.cd,node.cid);
+    kind=node.kind==="cover"?"COVERAGE CELL":"CROSSTAB CELL"}
+  else if(node.kind==="week"){recs=SCOPE.filter(r=>r.platform===node.platform&&r.week===node.week);
+    title=P_BY_ID[node.platform].name+" · week "+node.week; kind="PLATFORM · WEEK"}
+  else{const k=DIM[node.kind].key; recs=SCOPE.filter(r=>k(r)===node.id);
+    title=dimName(node.kind,node.id); kind=DIM[node.kind].label.toUpperCase()}
+  if(!recs.length){hideTip();return}
+  const st=stats(recs);
+  const topSrc=[...agg(recs,"source").values()].sort((a,b)=>b.n-a.n)[0];
+  tip.innerHTML=`<div class="tk">${kind}</div><div class="tt">${title}</div>
+    <div class="tm"><b>${st.n}</b> citations · <b>${st.ans}</b> answers<br>
+    tone <b style="color:${sentCSS(st.sent)}">${sentGlyph(st.sent)} ${sgn(st.sent)}</b> ${sentWord(st.sent)}<br>
+    ${Math.round(st.bands.neg/st.n*100)}% neg / ${Math.round(st.bands.neu/st.n*100)}% mixed / ${Math.round(st.bands.pos/st.n*100)}% pos<br>
+    ${node.kind!=="source"&&topSrc?"top source <b>"+S_BY_ID[topSrc.id].dom+"</b><br>":""}
+    PayPal in <b>${Math.round(st.pp/st.n*100)}%</b> of mentions</div>`;
+  const w=tip.offsetWidth||240, h=tip.offsetHeight||120;
+  tip.style.left=Math.min(W-w-10,Math.max(8,x+16))+"px";
+  tip.style.top=Math.min(H-h-10,Math.max(8,y+14))+"px";
+  tip.style.opacity=1;
+}
+
+/* ── loop ──────────────────────────────────────────────────────────── */
+let last=performance.now();
+function frame(t){
+  const dt=Math.min(.06,(t-last)/1000); last=t; CLOCK+=dt;
+  if(STATE.auto&&!drag&&!REDUCED) cam.gyaw+=dt*.036;
+  const ease=(a,b)=>a+(b-a)*Math.min(1,dt*7);
+  cam.yaw=ease(cam.yaw,cam.gyaw); cam.pitch=ease(cam.pitch,cam.gpitch); cam.dist=ease(cam.dist,cam.gdist);
+  buildScene(); render();
+  requestAnimationFrame(frame);
+}
+/* ══════════════════════════════════════════════════════════════════════
+   9 · EXTERNAL DATA
+   The demo set above is a placeholder. Drop a records.json bundle next to
+   this file (or pass ?data=<url>) and the whole instrument re-points at it.
+   Shape: { meta, platforms[], themes[], brands[], prompts[], sources[],
+            records[] } — see the pipeline README. Source types, intents and
+   sentiment bands stay fixed here on purpose: they are the vocabulary the
+   filters are built from, and the extractor is constrained to them.
+   ══════════════════════════════════════════════════════════════════════ */
+function syncDIM(){
+  DIM.platform.list=PLATFORMS; DIM.source.list=SOURCES; DIM.theme.list=THEMES;
+  DIM.brand.list=BRANDS;       DIM.prompt.list=PROMPTS;
+}
+function applyBundle(b){
+  const need=["platforms","themes","brands","prompts","sources","records"];
+  for(const k of need) if(!Array.isArray(b[k])) throw new Error("bundle missing "+k);
+  if(!b.records.length && !(b.answers||[]).length) throw new Error("bundle has no rows");
+  PLATFORMS=b.platforms.map(p=>({glyph:"hex",...p}));
+  SOURCES  =b.sources.map(x=>({auth:.5,type:"editorial",...x}));
+  THEMES   =b.themes;
+  BRANDS   =b.brands;
+  PROMPTS  =b.prompts;
+  RECORDS  =b.records.map(r=>({
+    nuance:[], tone:"Neutral-factual", auth:.5, rank:1, week:1, ...r,
+    bandId:r.bandId||(r.sent>=.22?"pos":r.sent<=-.22?"neg":"neu"),
+  }));
+  ANSWERS  =Array.isArray(b.answers)?b.answers:[];
+  VOL      =Array.isArray(b.volatility)?b.volatility:[];
+  MAXWEEK=Math.max(1,...RECORDS.map(r=>r.week||1),...ANSWERS.map(a=>a.week||1));
+  reindex(); syncDIM();
+  const m=b.meta||{};
+  const seen=ANSWERS.length?Math.round(ANSWERS.filter(a=>a.mentioned).length/ANSWERS.length*100):null;
+  document.getElementById("subline").innerHTML=
+    `${(m.brand||"Live data")} · <b style="color:#4d9cff">${RECORDS.length.toLocaleString()} citations</b>`
+    +(seen!==null?` · seen in <b style="color:${seen>=50?"#4d9cff":"#ff6b6b"}">${seen}%</b> of answers`:"")
+    +(m.generated?` · ${m.generated}`:"");
+  resetF(); paintPresets(); refresh(); syncSelects(); setSel(null);
+  setView(!ANSWERS.length&&STATE.view==="coverage"?"constellation":STATE.view);
+  console.info(`[answer-space] ${RECORDS.length} citations · ${ANSWERS.length} answers · ${SOURCES.length} sources · ${MAXWEEK} weeks`);
+}
+async function loadExternal(){
+  const url=new URLSearchParams(location.search).get("data")||"./records.json";
+  try{
+    const res=await fetch(url,{cache:"no-store"});
+    if(!res.ok) return;
+    applyBundle(await res.json());
+  }catch(err){
+    if(location.protocol==="file:")
+      console.info("[answer-space] running from file:// — fetch is blocked, showing demo data. Serve the folder to load records.json.");
+    else console.info("[answer-space] no records.json found, showing demo data.",err.message);
+  }
+}
+function boot(){
+  resize(); initUI(); autoCollapse(); rescope(); paintFilters(); paintReadout(); paintScope();
+  if(!window.ANSWER_SPACE_APP){
+    const seen=ANSWERS.length?Math.round(ANSWERS.filter(a=>a.mentioned).length/ANSWERS.length*100):null;
+    document.getElementById("subline").innerHTML=
+      `<b style="color:#c98500">demo dataset</b> \u00b7 fictional companies \u00b7 seen in ${seen}% of answers`;
+  }
+  setView(ANSWERS.length?"coverage":"constellation"); requestAnimationFrame(frame);
+  if(!window.ANSWER_SPACE_APP) loadExternal();
+}
+let railsAuto=true;
+function autoCollapse(){
+  if(!railsAuto) return;
+  const small=innerWidth<1120;
+  document.getElementById("rail-l").classList.toggle("hidden",small);
+  document.getElementById("rail-r").classList.toggle("hidden",small);
+  recentre();
+}
+addEventListener("resize",()=>{resize();autoCollapse();markDirty()});
+window.VIZ={
+  up:false,
+  boot(){ if(this.up) return; this.up=true; boot(); },
+  load(bundle){ this.boot(); applyBundle(bundle); },
+  refit(){ if(!this.up) return; resize(); autoCollapse(); markDirty(); },
+  reset(){ if(this.up){ resetF(); refresh(); syncSelects(); } },
+};
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(markDirty);
+if(!window.ANSWER_SPACE_APP) VIZ.boot();
+</script>
+</body>
+</html>

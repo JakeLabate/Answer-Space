@@ -1,0 +1,20 @@
+{
+  "name": "answer-space-pipeline",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Answer Space pipeline \u2014 turn a domain into an AI-answer visibility dataset",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "profile": "node src/run.js profile",
+    "prompts": "node src/run.js prompts",
+    "collect": "node src/run.js collect",
+    "extract": "node src/run.js extract",
+    "verify": "node src/run.js verify",
+    "build": "node src/run.js build",
+    "all": "node src/run.js all",
+    "serve": "node src/serve.js",
+    "build:standalone": "node ../build-standalone.mjs"
+  }
+}

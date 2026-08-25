@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-export const ROOT = path.resolve(new URL("..", import.meta.url).pathname);
+/* fileURLToPath, not .pathname — a URL path keeps its percent-escapes, so a
+   checkout living under a directory with a space in it (".../Answer Space/")
+   would otherwise resolve to a literal "Answer%20Space" that does not exist. */
+export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const DATA = path.join(ROOT, "data");
 
 export function loadEnv() {

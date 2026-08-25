@@ -167,3 +167,53 @@ pre{font-family:var(--mono);font-size:11.5px;background:#080d18;border:1px solid
    fixed rails measure against a clean viewport */
 body.viz-open #dash{display:none}
 .btnbar + h3{margin-top:26px}
+
+/* ══ accounts ══════════════════════════════════════════════════════════
+   Sign-in, the account sheet, and the run-history trend. Everything here is
+   additive — signed out, none of it renders. */
+
+.modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  background:rgba(4,7,14,.78);backdrop-filter:blur(3px);padding:24px}
+.modal[hidden]{display:none}
+.modal-card{position:relative;width:100%;max-width:430px;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r);padding:26px 26px 24px;
+  box-shadow:0 24px 70px rgba(0,0,0,.6);max-height:calc(100vh - 48px);overflow-y:auto}
+.modal-card h2{margin:0 0 8px;font-size:19px}
+.modal-x{position:absolute;top:12px;right:14px;background:none;border:0;color:var(--ink-3);
+  font-size:22px;line-height:1;cursor:pointer;padding:2px 6px}
+.modal-x:hover{color:var(--ink)}
+
+.authmsg{font-size:12px;margin-top:12px;min-height:16px;line-height:1.45}
+.authmsg.err{color:#ffb3b3}
+.authmsg.ok{color:#5fd6aa}
+
+.pill.synced{border-color:#2f5f9e;color:#9cc6ff;background:#12233c}
+.pill.syncing{border-color:#5c4a1f;color:#e0b558;background:#241d0d}
+
+/* which vendor keys the account holds — hints only, never the key */
+.keyrow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);
+  font-size:12.5px}
+.keyrow:last-child{border-bottom:0}
+.keyrow .kname{flex:1}
+.keyrow .khint{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.keyrow .kset{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+  color:#9cc6ff;border:1px solid #2f5f9e;background:#12233c;padding:1px 5px;border-radius:2px}
+
+/* ── run history ─────────────────────────────────────────────────── */
+#trend{margin:0 0 18px}
+.trend-svg{width:100%;height:132px;display:block;overflow:visible}
+.trend-legend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:10px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:8px}
+.trend-legend i{display:inline-block;width:9px;height:2px;vertical-align:middle;margin-right:6px}
+.trend-empty{font-size:12px;color:var(--ink-3);padding:18px 0}
+
+.histrow{display:grid;grid-template-columns:96px repeat(4,minmax(58px,1fr)) auto;gap:10px;
+  align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.histrow.head{font-family:var(--mono);font-size:9px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);border-bottom:1px solid var(--line)}
+.histrow .d{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.histrow .n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+.histrow .warn{color:var(--warn)}
+.histrow .bad{color:var(--neg)}
+.histrow button{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:11px;padding:2px 6px}
+.histrow button:hover{color:#ffb3b3}

@@ -24,6 +24,8 @@
     <div class="grow"></div>
     <span class="pill" id="enginePill">no engine</span>
     <span class="pill" id="dataPill">no data</span>
+    <span class="pill" id="syncPill" hidden>local only</span>
+    <button class="btn sm ghost" id="btnAccount">Sign in</button>
     <button class="btn sm ghost" id="btnExport">Export</button>
     <button class="btn sm ghost" id="btnWipe" title="Clear everything stored in this browser">Reset</button>
   </header>
@@ -35,7 +37,7 @@
       <!-- 1 ───────────────────────────────────────────────────────── -->
       <section class="pane" id="p-keys">
         <h2>Connect the assistants</h2>
-        <p class="lede">Keys are stored in this browser only and go straight to each vendor's API. Nothing is sent to any server of mine, because there is no server of mine — this page is static.</p>
+        <p class="lede" id="keysLede">Keys are stored in this browser only and go straight to each vendor's API. Nothing is sent to any server of mine, because there is no server of mine — this page is static.</p>
 
         <div id="chanlist"></div>
 
@@ -246,6 +248,16 @@ Buyer protection covers eligible physical goods only, never digital services."><
           <label class="btn ghost" for="fileIn" style="cursor:pointer">Import records.json<input type="file" id="fileIn" accept="application/json" hidden></label>
         </div>
         <div class="hint" id="exploreStatus" style="margin-top:12px"></div>
+
+        <div id="historyWrap" hidden>
+          <h3 style="margin:26px 0 4px">Run history</h3>
+          <p class="hint" style="margin:0 0 14px">
+            Every snapshot you have collected while signed in. One run tells you where you
+            stand; the line between them is the only thing that tells you which way you are
+            going.</p>
+          <div id="trend"></div>
+          <div id="historyList"></div>
+        </div>
       </section>
 
     </main>
@@ -408,7 +420,55 @@ Buyer protection covers eligible physical goods only, never digital services."><
   </div>
 </div>
 
-<script>window.ANSWER_SPACE_APP=true;</script>
+<div id="authModal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <button class="modal-x" id="authClose" aria-label="Close">&times;</button>
+    <h2 id="authTitle">Sign in</h2>
+    <p class="hint" id="authLede">
+      An account keeps your profile, query set and every snapshot together, so history
+      survives a cleared cache and a run made here is readable on another machine.</p>
+
+    <div class="field"><label for="authEmail">Email</label>
+      <input type="email" id="authEmail" autocomplete="email" placeholder="you@company.com"></div>
+    <div class="field"><label for="authPass">Password</label>
+      <input type="password" id="authPass" autocomplete="current-password" placeholder="at least 6 characters"></div>
+
+    <div class="authmsg" id="authMsg"></div>
+
+    <div class="btnbar" style="border:none;padding:0;margin-top:14px">
+      <button class="btn primary" id="authGo">Sign in</button>
+      <button class="btn ghost" id="authSwap">Create an account</button>
+      <div class="grow"></div>
+      <button class="btn ghost sm" id="authForgot">Forgot password</button>
+    </div>
+
+    <p class="hint" style="margin-top:16px;border-top:1px solid var(--line,#2a2a33);padding-top:12px">
+      Signing in is optional. Everything works signed out, stored only in this browser.
+      Signed in, your vendor API keys are encrypted before they are stored and are never
+      written to this browser's localStorage.</p>
+  </div>
+</div>
+
+<div id="accountModal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="acctTitle">
+    <button class="modal-x" id="acctClose" aria-label="Close">&times;</button>
+    <h2 id="acctTitle">Account</h2>
+    <p class="hint" id="acctEmail"></p>
+    <div id="acctKeys"></div>
+    <div class="btnbar" style="border:none;padding:0;margin-top:16px">
+      <button class="btn ghost" id="acctSignOut">Sign out</button>
+      <div class="grow"></div>
+      <button class="btn ghost sm danger" id="acctWipeCloud">Delete cloud data</button>
+    </div>
+  </div>
+</div>
+
+<script>window.ANSWER_SPACE_APP=true;
+  window.cloudReady=new Promise(r=>{ window.__cloudResolve=r;
+    /* never let a blocked CDN hang the dashboard — fall back to local mode */
+    setTimeout(()=>r(window.CLOUD||null),6000); });</script>
+<script src="config.js"></script>
+<script type="module" src="cloud.js"></script>
 <script src="viz.js"></script>
 <script src="app.js"></script>
 </body>

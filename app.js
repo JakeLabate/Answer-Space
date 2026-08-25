@@ -96,7 +96,15 @@ async function pool(items, limit, fn, onTick){
 const LS = "answerspace.cfg";
 let CFG = { keys:{}, models:{}, demo:false, site:"", hint:"", profile:null, prompts:null, facts:"",
             scan:{q:20,r:3,verify:true,verifyMax:40}, gh:{repo:"",pat:""}, step:"keys" };
-function saveCfg(){ try{ localStorage.setItem(LS, JSON.stringify(CFG)); }catch{} }
+function saveCfg(){
+  try{
+    /* Signed in, the vendor keys live encrypted in the account instead, so they
+       are deliberately not written to this browser at all. Signed out, nothing
+       changes: this is the same localStorage record it has always been. */
+    localStorage.setItem(LS, JSON.stringify(signedIn() ? {...CFG, keys:{}} : CFG));
+  }catch{}
+  if(signedIn()) CLOUD.pushWorkspace(CFG);
+}
 function loadCfg(){ try{ const j=JSON.parse(localStorage.getItem(LS)||"null"); if(j) CFG={...CFG,...j}; }catch{} }
 
 let DB=null;
@@ -111,14 +119,27 @@ function db(){
 }
 async function kvGet(k){ const d=await db(); return new Promise((res,rej)=>{
   const t=d.transaction("kv").objectStore("kv").get(k); t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error); }); }
-async function kvPut(k,v){ const d=await db(); return new Promise((res,rej)=>{
+async function kvPut(k,v){ const d=await db();
+  if(/^(ans|ext|ver):/.test(String(k))) DIRTY.add(String(k).slice(4));
+  return new Promise((res,rej)=>{
   const t=d.transaction("kv","readwrite").objectStore("kv").put(v,k); t.onsuccess=()=>res(); t.onerror=()=>rej(t.error); }); }
 async function kvKeys(){ const d=await db(); return new Promise((res,rej)=>{
   const t=d.transaction("kv").objectStore("kv").getAllKeys(); t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error); }); }
 async function kvDel(k){ const d=await db(); return new Promise((res,rej)=>{
   const t=d.transaction("kv","readwrite").objectStore("kv").delete(k); t.onsuccess=()=>res(); t.onerror=()=>rej(t.error); }); }
 
-const STATE = { abort:false, running:false, bundle:null };
+const STATE = { abort:false, running:false, bundle:null, history:[], syncing:false };
+
+/* ── accounts ──────────────────────────────────────────────────────────
+   cloud.js defines window.CLOUD when a Supabase project is configured. Signed
+   out — or not configured at all — every helper below is a no-op and the
+   engine runs exactly as it did before accounts existed. Local storage is
+   always written first and the cloud second, so a failed sync can never cost
+   you a run. */
+const signedIn = () => !!(window.CLOUD && window.CLOUD.signedIn());
+
+/* Snapshot dates whose raw data has changed locally and not yet been pushed. */
+const DIRTY = new Set();
 
 /* ══════════════════════════════════════════════════════════════════════
    Worker model — profiling, query writing, citation extraction.
@@ -523,6 +544,8 @@ function renderChannels(){
     inp.value=CFG.keys[c.key]||""; inp.autocomplete="off"; inp.spellcheck=false;
     inp.oninput=()=>{ const v=inp.value.trim(); if(v) CFG.keys[c.key]=v; else delete CFG.keys[c.key];
       saveCfg(); renderSteps(); renderKeysHint(); };
+    /* On blur, not on input — one encrypted write per key, not one per keystroke. */
+    inp.onchange=()=>{ if(!signedIn()) return; syncKey(c.key, inp.value.trim()); };
     wrap.appendChild(inp);
     if(c.cors){
       const m=el("input"); m.type="text"; m.placeholder=DEFAULT_MODELS[c.id];
@@ -731,7 +754,7 @@ function renderRunMetrics(){
   ].map(([k,v])=>`<div class="metric"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
 }
 function log(msg,cls){
-  const box=$("#log");
+  const box=$("#log"); if(!box) return;
   if(box.children.length===1 && box.firstChild.textContent==="idle") box.innerHTML="";
   const d=el("div",cls||"",esc(msg)); box.appendChild(d); box.scrollTop=box.scrollHeight;
   while(box.children.length>400) box.removeChild(box.firstChild);
@@ -837,6 +860,7 @@ async function buildBundle(){
     .filter(Boolean).map(d=>d.replace(/^www\./,"").toLowerCase());
   const roster=new Set(brandIds(p));
   const sources=new Map(); const records=[]; const answers=[]; let rid=0;
+  const perDate=new Map();
 
   for(const date of dates){
     const raw=(await kvGet("ans:"+date))||[];
@@ -844,7 +868,10 @@ async function buildBundle(){
     const ver=(await kvGet("ver:"+date))||{};
     const week=Math.max(1,Math.floor((new Date(date)-epoch)/(7*864e5))+1);
 
-    for(const ex of (await kvGet("ext:"+date))||[]){
+    const exts=(await kvGet("ext:"+date))||[];
+    const aFrom=answers.length, rFrom=records.length;
+
+    for(const ex of exts){
       const a=byId.get(ex.aid); if(!a) continue;
 
       /* ── one row per ANSWER. This is the half that can see absence. ── */
@@ -888,6 +915,14 @@ async function buildBundle(){
         });
       }
     }
+
+    /* One row per date for the history table and the trend line. Measured from
+       the very rows just built, so the timeline can never drift from what the
+       explorer shows. */
+    perDate.set(date, {
+      raw:{ answers:raw, extractions:exts, verifications:ver },
+      ...summarise(answers.slice(aFrom), records.slice(rFrom)),
+    });
   }
   if(!records.length && !answers.length){ log("nothing survived extraction","e"); return; }
 
@@ -933,6 +968,7 @@ async function buildBundle(){
     sources:[...sources.values()], records, answers, volatility:vol,
   };
   STATE.bundle=bundle; await kvPut("bundle",bundle);
+  pushSnapshots(perDate);
   const seen=answers.filter(a=>a.mentioned).length;
   log(`✓ ${records.length} citations · ${answers.length} answers · seen in ${answers.length?Math.round(seen/answers.length*100):0}% · ${bundle.sources.length} sources`,"g");
   renderSteps(); renderExplore();
@@ -1044,6 +1080,7 @@ function renderExplore(){
   if(!b.meta.verified) bits.push('verification was off for this run — "unsupported" cannot be counted');
   if(!b.meta.hasFacts) bits.push("no ground truth supplied — fact conflicts not checked");
   $("#exploreStatus").innerHTML=bits.join(" · ");
+  if(signedIn()) renderHistory();
 }
 
 function openViz(){
@@ -1064,10 +1101,336 @@ function download(name,obj){
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   Accounts — sync, history, auth UI
+
+   Signed out this section renders nothing and costs nothing. The rule that
+   keeps it safe is that the local stores stay authoritative while you work:
+   IndexedDB is the working set, the account is the durable copy. Signing in
+   downloads what the account has that this browser lacks, then everything
+   downstream — buildBundle, the explorer, the wizard — runs unchanged.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Per-date measurement, from the rows buildBundle just produced. */
+function summarise(dayAnswers, dayRecords){
+  const A=dayAnswers, R=dayRecords;
+  const tone=R.length ? R.reduce((x,r)=>x+r.sent,0)/R.length : null;
+
+  /* Instability within the snapshot: same question, same model, repeats that
+     disagree about whether you were there at all. */
+  const grp=new Map();
+  for(const a of A){ const k=a.prompt+"|"+a.platform; (grp.get(k)||grp.set(k,[]).get(k)).push(a); }
+  let flipped=0;
+  for(const [,list] of grp){
+    if(list.length<2) continue;
+    const rate=list.filter(a=>a.mentioned).length/list.length;
+    if(rate>0 && rate<1) flipped++;
+  }
+
+  /* Platform × theme, so a trend can be sliced without downloading raw. */
+  const cells=new Map();
+  for(const a of A){
+    const k=a.platform+"|"+a.theme;
+    const c=cells.get(k)||cells.set(k,{platform:a.platform,theme:a.theme,answers:0,mentioned:0,recommended:0}).get(k);
+    c.answers++; if(a.mentioned) c.mentioned++; if(a.recommended) c.recommended++;
+  }
+
+  return {
+    answers:A.length, citations:R.length,
+    mentioned:A.filter(a=>a.mentioned).length,
+    recommended:A.filter(a=>a.recommended).length,
+    refused:A.filter(a=>a.refused).length,
+    avg_tone: tone==null ? null : Math.round(tone*1000)/1000,
+    unsupported:R.filter(r=>r.support==="unsupported").length,
+    fact_conflicts:R.filter(r=>r.factConflict).length,
+    risk_flags:R.filter(r=>r.risks&&r.risks.length).length,
+    wins:R.filter(r=>r.verdict==="client wins").length,
+    losses:R.filter(r=>r.verdict==="client loses").length,
+    flipped,
+    verified:R.some(r=>r.support!=="unchecked"),
+    has_facts:!!(CFG.facts||"").trim(),
+    demo:!!CFG.demo,
+    prompt_set_version:CFG.prompts?.version||1,
+    metrics:[...cells.values()],
+  };
+}
+
+/* Push the snapshots this browser changed. Failures are logged, never fatal —
+   the local copy is already safe by the time this runs. */
+async function pushSnapshots(perDate){
+  if(!signedIn() || !perDate?.size) return;
+  const todo=[...perDate.keys()].filter(d=>DIRTY.has(d));
+  if(!todo.length) return;
+  setSync("syncing");
+  for(const date of todo){
+    const {raw, metrics, ...summary}=perDate.get(date);
+    try{
+      await CLOUD.pushSnapshot(date, raw, summary, metrics);
+      DIRTY.delete(date);
+    }catch(e){ log(`sync: ${date} did not save — ${e.message.slice(0,90)}`,"e"); }
+  }
+  STATE.history=await CLOUD.history();
+  setSync(DIRTY.size ? "pending" : "synced");
+  renderHistory();
+}
+
+/* One encrypted write per key change. Called on blur from step 1. */
+async function syncKey(provider, value){
+  if(!signedIn()) return;
+  try{
+    setSync("syncing");
+    if(value) await CLOUD.putKey(provider, value);
+    else      await CLOUD.delKey(provider);
+    setSync(DIRTY.size?"pending":"synced");
+  }catch(e){
+    setSync("pending");
+    log("sync: that key was not saved to your account — "+String(e.message||e).slice(0,100),"e");
+  }
+}
+
+/* Sign-in: bring down what the account has and this browser does not. */
+async function hydrate(){
+  if(!signedIn()) return;
+  setSync("syncing");
+  CLOUD.setHydrating(true);
+  try{
+    const ws=await CLOUD.pullWorkspace();
+
+    /* Whose configuration wins. The account is the record you signed in to
+       reach, so when it holds a profile it wins outright. When it does not —
+       a brand-new account — whatever you had set up locally is adopted and
+       uploaded, so signing up never throws away the work that led you here. */
+    if(ws && ws.profile){
+      CFG.site=ws.site||""; CFG.hint=ws.hint||"";
+      CFG.profile=ws.profile; CFG.prompts=ws.prompts||CFG.prompts;
+      CFG.facts=ws.facts||""; CFG.step=ws.step||CFG.step;
+      if(ws.scan) CFG.scan={...CFG.scan,...ws.scan};
+      if(ws.models) CFG.models={...ws.models};
+    }else{
+      CLOUD.setHydrating(false);
+      CLOUD.pushWorkspace(CFG);
+      CLOUD.setHydrating(true);
+    }
+
+    /* Vendor keys, decrypted for their owner only. */
+    try{ Object.assign(CFG.keys, await CLOUD.getKeys()); }
+    catch(e){ log("sync: could not read stored keys — "+e.message.slice(0,80),"e"); }
+
+    /* Snapshots the account has and this browser does not. */
+    const remote=await CLOUD.snapshotDates();
+    const local=await snapshotDates();
+    let pulled=0;
+    for(const d of remote){
+      if(local.includes(d)) continue;
+      const raw=await CLOUD.pullSnapshot(d);
+      if(!raw) continue;
+      if(raw.answers)       await kvPut("ans:"+d, raw.answers);
+      if(raw.extractions)   await kvPut("ext:"+d, raw.extractions);
+      if(raw.verifications) await kvPut("ver:"+d, raw.verifications);
+      DIRTY.delete(d);            /* it came from there; do not send it back */
+      pulled++;
+    }
+    /* …and anything this browser has that the account never saw. */
+    for(const d of local) if(!remote.includes(d)) DIRTY.add(d);
+
+    STATE.history=await CLOUD.history();
+    if(pulled) log(`▸ pulled ${pulled} snapshot${pulled===1?"":"s"} from your account`,"g");
+  }catch(e){
+    log("sync: "+String(e.message||e).slice(0,120),"e");
+  }finally{
+    CLOUD.setHydrating(false);
+  }
+
+  saveCfg();
+  STATE.dates=await snapshotDates();
+  if(CFG.profile && STATE.dates.length) await buildBundle();   /* also pushes what is dirty */
+  else setSync(DIRTY.size?"pending":"synced");
+}
+
+/* ── header state ──────────────────────────────────────────────────── */
+function setSync(state){
+  const pill=$("#syncPill"); if(!pill) return;
+  if(!signedIn()){ pill.hidden=true; return; }
+  pill.hidden=false;
+  pill.className="pill"+(state==="synced"?" synced":state==="syncing"||state==="pending"?" syncing":"");
+  pill.textContent = state==="syncing" ? "syncing…"
+    : state==="pending" ? "unsaved changes" : "synced";
+}
+function renderAccount(){
+  const btn=$("#btnAccount"); if(!btn) return;
+  if(!window.CLOUD || !CLOUD.enabled){ btn.hidden=true; $("#syncPill").hidden=true; return; }
+  btn.hidden=false;
+  if(signedIn()){
+    const em=CLOUD.user?.email||"account";
+    btn.textContent=em.length>22?em.slice(0,20)+"…":em;
+    btn.title="Signed in as "+em;
+    setSync(DIRTY.size?"pending":"synced");
+  }else{
+    btn.textContent="Sign in"; btn.title="Save your setup and history to an account";
+    $("#syncPill").hidden=true;
+  }
+  const lede=$("#keysLede");
+  if(lede) lede.innerHTML = signedIn()
+    ? `Keys go straight to each vendor's API. Because you are signed in they are also
+       encrypted and stored on your account so scans work on your other devices — and
+       they are <b>not</b> written to this browser's localStorage.`
+    : `Keys are stored in this browser only and go straight to each vendor's API.
+       Nothing is sent to any server of mine, because there is no server of mine —
+       this page is static.`;
+  $("#historyWrap").hidden = !signedIn();
+  if(signedIn()) renderHistory();
+}
+
+/* ── run history + trend ───────────────────────────────────────────── */
+function renderHistory(){
+  const wrap=$("#historyWrap"); if(!wrap || !signedIn()) return;
+  const H=STATE.history||[];
+  const list=$("#historyList"), trend=$("#trend");
+
+  if(!H.length){
+    trend.innerHTML="";
+    list.innerHTML='<div class="trend-empty">No snapshots saved to this account yet. '
+      +'Collect a run and it will appear here.</div>';
+    return;
+  }
+
+  const pct=(n,d)=>d?Math.round(n/d*100):0;
+  list.innerHTML='<div class="histrow head"><span>Snapshot</span><span class="n">Answers</span>'
+    +'<span class="n">Seen</span><span class="n">Recommended</span><span class="n">Unsupported</span><span></span></div>'
+    + H.slice().reverse().map(r=>`<div class="histrow">
+        <span class="d">${esc(r.taken_on)}${r.demo?' <span class="khint">demo</span>':""}</span>
+        <span class="n">${(r.answers||0).toLocaleString()}</span>
+        <span class="n">${pct(r.mentioned,r.answers)}%</span>
+        <span class="n">${pct(r.recommended,r.answers)}%</span>
+        <span class="n${r.unsupported?" bad":""}">${r.unsupported||0}</span>
+        <span><button data-del="${esc(r.taken_on)}" title="Delete this snapshot from your account">Delete</button></span>
+      </div>`).join("");
+
+  list.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    const d=b.dataset.del;
+    if(!confirm(`Delete the ${d} snapshot from your account?\n\nThe copy in this browser stays until you Reset.`))return;
+    try{
+      await CLOUD.deleteSnapshot(d);
+      STATE.history=await CLOUD.history();
+      renderHistory();
+    }catch(e){ alert("Could not delete it:\n\n"+e.message); }
+  });
+
+  /* Two lines, because they answer different questions: whether an assistant
+     names you at all, and whether it actually points at you. */
+  if(H.length<2){
+    trend.innerHTML='<div class="trend-empty">One snapshot so far — the line starts at two.</div>';
+    return;
+  }
+  const W=760, Hh=110, pad=6;
+  const xs=i=>pad+(W-pad*2)*(H.length===1?0:i/(H.length-1));
+  const ys=v=>Hh-pad-(Hh-pad*2)*(v/100);
+  const line=key=>H.map((r,i)=>`${i?"L":"M"}${xs(i).toFixed(1)},${ys(pct(r[key],r.answers)).toFixed(1)}`).join("");
+  const dots=key=>H.map((r,i)=>`<circle cx="${xs(i).toFixed(1)}" cy="${ys(pct(r[key],r.answers)).toFixed(1)}" r="2.5"/>`).join("");
+  trend.innerHTML=`
+    <svg class="trend-svg" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img"
+         aria-label="Share of answers naming you, and recommending you, over time">
+      ${[0,25,50,75,100].map(g=>`<line x1="${pad}" y1="${ys(g)}" x2="${W-pad}" y2="${ys(g)}"
+          stroke="var(--line-soft)" stroke-width="1"/>`).join("")}
+      <path d="${line("mentioned")}"   fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <path d="${line("recommended")}" fill="none" stroke="var(--ok)" stroke-width="2" stroke-dasharray="4 3"/>
+      <g fill="var(--accent)">${dots("mentioned")}</g>
+      <g fill="var(--ok)">${dots("recommended")}</g>
+    </svg>
+    <div class="trend-legend">
+      <span><i style="background:var(--accent)"></i>Seen — named at all</span>
+      <span><i style="background:var(--ok)"></i>Recommended — actually pointed at</span>
+      <span>${esc(H[0].taken_on)} → ${esc(H[H.length-1].taken_on)}</span>
+    </div>`;
+}
+
+/* ── auth dialogs ──────────────────────────────────────────────────── */
+let authMode="in";
+function openAuth(mode){
+  authMode=mode||"in";
+  $("#authMsg").textContent=""; $("#authMsg").className="authmsg";
+  $("#authPass").value="";
+  paintAuth();
+  $("#authModal").hidden=false;
+  $("#authEmail").focus();
+}
+function paintAuth(){
+  const up=authMode==="up";
+  $("#authTitle").textContent = up?"Create an account":"Sign in";
+  $("#authGo").textContent    = up?"Create account":"Sign in";
+  $("#authSwap").textContent  = up?"I already have an account":"Create an account";
+  $("#authPass").autocomplete = up?"new-password":"current-password";
+  $("#authLede").textContent  = up
+    ? "Your current setup in this browser — profile, query set, ground truth and any snapshots — is uploaded to the new account, so nothing you have done so far is lost."
+    : "An account keeps your profile, query set and every snapshot together, so history survives a cleared cache and a run made here is readable on another machine.";
+}
+function authSay(msg,kind){ const n=$("#authMsg"); n.textContent=msg; n.className="authmsg"+(kind?" "+kind:""); }
+
+async function doAuth(){
+  const email=$("#authEmail").value.trim(), pass=$("#authPass").value;
+  if(!email||!pass) return authSay("Email and password, please.","err");
+  if(authMode==="up" && pass.length<6) return authSay("Passwords need at least six characters.","err");
+  const btn=$("#authGo"), old=btn.textContent;
+  btn.disabled=true; btn.textContent="…"; authSay("");
+  try{
+    if(authMode==="up"){
+      const {confirm}=await CLOUD.signUp(email,pass);
+      if(confirm){
+        authSay("Check your email to confirm the address, then sign in.","ok");
+        authMode="in"; paintAuth(); return;
+      }
+    }else{
+      await CLOUD.signIn(email,pass);
+    }
+    $("#authModal").hidden=true;
+    await afterAuthChange();
+  }catch(e){
+    authSay(String(e.message||e).slice(0,200),"err");
+  }finally{ btn.disabled=false; btn.textContent=old; }
+}
+
+async function afterAuthChange(){
+  renderAccount();
+  if(signedIn()) await hydrate();
+  renderChannels(); renderSteps(); renderExplore(); renderAccount();
+  if(CFG.profile){ $("#site").value=CFG.site||""; $("#hint").value=CFG.hint||"";
+    $("#facts").value=CFG.facts||""; }
+  go(ready(CFG.step)?CFG.step:"keys");
+}
+
+async function openAccount(){
+  $("#acctEmail").textContent="Signed in as "+(CLOUD.user?.email||"—");
+  const box=$("#acctKeys");
+  box.innerHTML='<div class="hint">Loading keys…</div>';
+  $("#accountModal").hidden=false;
+  try{
+    const set=await CLOUD.listKeys();
+    const by=Object.fromEntries(set.map(k=>[k.provider,k]));
+    box.innerHTML='<h3 style="margin:18px 0 2px;font-size:13px">Stored keys</h3>'
+      +'<p class="hint" style="margin:0 0 8px">Encrypted on your account. Add or change them on step 1.</p>'
+      + Object.entries(KEYMETA).map(([k,m])=>{
+          const row=by[k];
+          return `<div class="keyrow"><span class="kname">${esc(m.label||k)}</span>`
+            + (row ? `<span class="khint">••••${esc(row.hint||"")}</span><span class="kset">set</span>`
+                   : '<span class="khint">not set</span>')
+            + `</div>`;
+        }).join("");
+  }catch(e){ box.innerHTML=`<div class="hint" style="color:#ffb3b3">${esc(e.message)}</div>`; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    Boot
    ══════════════════════════════════════════════════════════════════════ */
 async function boot(){
   loadCfg();
+
+  /* Wait for cloud.js to report whether accounts exist and whether this browser
+     already holds a session. It resolves null — after a short timeout at worst —
+     when Supabase is not configured or unreachable, and the dashboard then runs
+     in exactly the local-only mode it always had. */
+  await (window.cloudReady || Promise.resolve(null));
+  renderAccount();
+  if(signedIn()) await hydrate();
+
   renderChannels();
   $("#site").value=CFG.site||""; $("#hint").value=CFG.hint||"";
   $("#scanQ").value=CFG.scan.q||20; $("#scanR").value=CFG.scan.r||3;
@@ -1112,6 +1475,40 @@ async function boot(){
   $("#btnDispatch").onclick=dispatch;
   $("#btnPull").onclick=pullRecords;
   $("#btnOpenViz").onclick=openViz;
+
+  /* accounts */
+  $("#btnAccount").onclick=()=>{ signedIn() ? openAccount() : openAuth("in"); };
+  $("#authClose").onclick=()=>$("#authModal").hidden=true;
+  $("#acctClose").onclick=()=>$("#accountModal").hidden=true;
+  $("#authSwap").onclick=()=>{ authMode=authMode==="up"?"in":"up"; paintAuth(); authSay(""); };
+  $("#authGo").onclick=doAuth;
+  $("#authPass").onkeydown=e=>{ if(e.key==="Enter") doAuth(); };
+  $("#authEmail").onkeydown=e=>{ if(e.key==="Enter") $("#authPass").focus(); };
+  $("#authForgot").onclick=async()=>{
+    const em=$("#authEmail").value.trim();
+    if(!em) return authSay("Enter your email first, then press this.","err");
+    try{ await CLOUD.resetPassword(em); authSay("Sent — check your email for the reset link.","ok"); }
+    catch(e){ authSay(String(e.message||e).slice(0,180),"err"); }
+  };
+  $("#acctSignOut").onclick=async()=>{
+    await CLOUD.signOut();
+    $("#accountModal").hidden=true;
+    /* The local copy stays. Signing out is not a delete — it just stops syncing. */
+    saveCfg();
+    renderAccount(); renderChannels(); renderSteps();
+  };
+  $("#acctWipeCloud").onclick=async()=>{
+    if(!confirm("Delete every snapshot, key and setting from your account?\n\nThe copy in this browser is untouched. This cannot be undone."))return;
+    try{
+      await CLOUD.deleteEverything();
+      STATE.history=await CLOUD.history();
+      renderHistory();
+      alert("Your account data is deleted. What is in this browser is still here.");
+    }catch(e){ alert("Could not delete it:\n\n"+e.message); }
+  };
+  $$(".modal").forEach(m=>m.onclick=e=>{ if(e.target===m) m.hidden=true; });
+  window.CLOUD?.onChange(()=>{ renderAccount(); });
+  addEventListener("beforeunload",()=>{ if(signedIn()) CLOUD.flushWorkspace(); });
   $("#backToSetup").onclick=closeViz;
   $("#btnDownload").onclick=()=>STATE.bundle&&download("records.json",STATE.bundle);
   $("#fileIn").onchange=async e=>{
@@ -1122,12 +1519,19 @@ async function boot(){
   $("#btnExport").onclick=async()=>download("answer-space-config.json",
     {cfg:{...CFG,keys:{}},bundle:STATE.bundle,dates:await snapshotDates()});
   $("#btnWipe").onclick=async()=>{
-    if(!confirm("Delete the profile, query set, every snapshot and all keys from this browser?"))return;
+    if(!confirm(signedIn()
+      ? "Delete the profile, query set, every snapshot and all keys from THIS BROWSER?\n\nYour account keeps its copy — sign in again and it comes back. Use Account → Delete cloud data to remove that too."
+      : "Delete the profile, query set, every snapshot and all keys from this browser?"))return;
     localStorage.removeItem(LS);
     for(const k of await kvKeys()) await kvDel(k);
     location.reload();
   };
-  addEventListener("keydown",e=>{ if(e.key==="Escape"&&$("#app").classList.contains("on")) closeViz(); });
+  addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    if(!$("#authModal").hidden){ $("#authModal").hidden=true; return; }
+    if(!$("#accountModal").hidden){ $("#accountModal").hidden=true; return; }
+    if($("#app").classList.contains("on")) closeViz();
+  });
 
   STATE.bundle=(await kvGet("bundle"))||null;
   STATE.dates=await snapshotDates();

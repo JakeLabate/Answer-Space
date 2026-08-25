@@ -7,8 +7,15 @@ Measure how AI assistants answer questions in your category:
 - **what those answers actually claim** about you
 - **whether the claims are true**, checked against the cited page and against facts you supply
 
-Static site. Runs on GitHub Pages. Bring your own API keys. There is no backend, no
-account, and nothing of yours reaches anyone but the model vendors you key.
+Static site. Runs on GitHub Pages. Bring your own API keys.
+
+**Signed out it has no backend at all** — config in `localStorage`, snapshots in
+IndexedDB, and nothing of yours reaches anyone but the model vendors you key.
+
+**Signing in is optional** and adds one thing: the same data is also kept in your own
+Supabase project, so history survives a cleared cache, a run made on your laptop is
+readable on your phone, and the week-over-week line has something to draw. The engine
+still runs in your browser either way. See [SETUP.md](SETUP.md).
 
 ---
 
@@ -133,17 +140,47 @@ Start at 1 channel × 20 queries × 3 repeats and read twenty extracted records 
 
 ---
 
+## Accounts
+
+Optional, additive, and off unless you configure it. What an account buys is a
+**timeline**: one snapshot tells you where you stand, and only the line between
+snapshots tells you which way you are going.
+
+- **Run history** — every snapshot kept as a dated row, with a trend of how often you
+  were named and how often you were actually recommended.
+- **Your setup follows you** — profile, query set and ground truth restore on any
+  machine you sign in from.
+- **Keys stop living in `localStorage`** — signed in, vendor keys are encrypted
+  (AES-256-GCM) into your Supabase project and deliberately not written to the browser.
+
+The collection engine does not change: it still runs in your browser, on your keys, on
+your schedule. There is no server-side job runner, so nothing collects while you are
+away — a run is still something you start.
+
+Sign out and it is the original tool again, with everything still in this browser.
+
+Setup is one pasted secret: **[SETUP.md](SETUP.md)**.
+
+---
+
 ## Storage
 
-| Thing | Lives in |
-|---|---|
-| Keys, profile, query set, ground truth | your browser's `localStorage` |
-| Raw answers, extractions, verifications | your browser's IndexedDB |
-| `records.json` | the repo, if you run via Actions; otherwise download from step 7 |
+| Thing | Signed out | Signed in |
+|---|---|---|
+| Keys | `localStorage`, plaintext | encrypted in `api_keys` — **not** in `localStorage` |
+| Profile, query set, ground truth | `localStorage` | `localStorage` **and** `workspaces` |
+| Raw answers, extractions, verifications | IndexedDB | IndexedDB **and** `snapshots.raw` |
+| `records.json` | the repo, if you run via Actions; otherwise download from step 7 | unchanged |
 
-Per-browser, so a run on your laptop isn't on your phone — use the Actions path if the
-dataset needs to be shared. A public repo means a public `records.json`; Pages on a private
-repo needs a paid GitHub plan.
+Local is written first and the cloud second, so a failed sync never costs you a run.
+
+Signed out, storage is per-browser — a run on your laptop isn't on your phone. Signing in
+is one fix for that; the Actions path is the other. A public repo means a public
+`records.json`; Pages on a private repo needs a paid GitHub plan.
+
+Row-level security keys every table to `auth.uid()`, so one account cannot read another's
+rows even with the publishable key in hand. That is enforced by Postgres, not by the
+client — [verified against the live project](SETUP.md), not assumed.
 
 ---
 
@@ -208,6 +245,11 @@ those runs — not that it never would.
 ```
 index.html                     the dashboard
 app.js / app.css               wizard, browser engine, storage, Actions dispatch
+config.js                      which Supabase project accounts use (blank = accounts off)
+cloud.js                       auth, sync, run history — no-ops entirely when signed out
+supabase/migrations/           the schema: tables, RLS policies, signup trigger
+supabase/functions/keys/       encrypts vendor keys; holds the master key
+SETUP.md                       provisioning, and the one secret you must set
 viz.js / viz.css               the explorer
 answer-space-explorer.html     one-file build of the explorer (npm run build:standalone)
 build-standalone.mjs           makes it
